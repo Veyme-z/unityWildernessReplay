@@ -1,0 +1,83 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+
+# Asset meta files should not be ignored
+!.gitkeep
+
+# Visual Studio / Rider
+.idea/
+.vs/
+*.csproj
+*.sln
+*.unityproj
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Package Manager
+/[Pp]ackages/
+/packages/
+
+# Crash reports
+Crashlytics/
+CrashReport.*
+
+# Autobuild
+/Autobuild/
+
+# Unity Cloud Build
+/UnityCloudBuild/
+
+# ProjectSettings/EditorBuildSettings.asset is important, don't ignore
+# But we should ignore some generated settings
+/[Pp]rojectSettings/ProjectVersion.txt
+
+# Shader cache
+ShaderCache/
+
+# Recordings
+/[Rr]ecordings/
+
+# Screenshots
+/[Ss]creenshots/
+
+# Asset Store Tools
+/AssetStoreTools/
+
+# JetBrains Rider
+.idea/
+*.sln.DotSettings.user
+
+# MCP For Unity runtime state
+/Library/MCPForUnity/
+
+# Build output
+*.exe
+*.exe.meta
+*.apk
+*.apk.meta
+*.aab
+*.aab.meta
+Build_*/
