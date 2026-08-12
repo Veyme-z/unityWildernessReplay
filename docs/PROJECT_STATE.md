@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-11
+> **最后更新**：2026-08-12
 
 ---
 
@@ -38,8 +38,9 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | `Scene/MatLib.cs` | 材质缓存池 + 程序化圆环贴图（Sprites/Default shader） |
 | `Scene/FxFactory.cs` | 气泡/光束特效 |
 | `Scene/Pickable.cs` `Scene/Billboard.cs` | 点击拾取 / 面向相机 |
-| `Scene/ReplayCameraRig.cs` | 手动相机：1/2/3 快捷机位 + 35°俯角 |
-| `Scene/CameraManager.cs` | 自动相机：SmoothDamp + 事件特写 |
+| `Scene/ReplayCameraRig.cs` | 相机系统：1/2/3/4 快捷机位 (Global/TeamA/TeamB/Free)；Free 模式左键平移+右键旋转+滚轮锚点缩放 |
+| `Scene/CameraManager.cs` | 自动导播：SmoothDamp + 事件特写 + 震屏 |
+| `FX/TradeBadge.cs` | 交易提示徽标：World Space Billboard + 弹出淡出；Vendor/Shop 独立参数 |
 
 ### UI
 `HudController.cs` `EventLogPanelController.cs` `PlaybackControlPanelController.cs` `SettlementPanelController.cs`
@@ -60,8 +61,13 @@ Resources/Prefabs/Units/
 ### 野兽
 ```
 Resources/Prefabs/Beasts/
-├── Beast_11~14.prefab  # Skeleton_Minion/Mage/Warrior/Rogue
+├── Beast_11.prefab  # Bot Robot (小型)
+├── Beast_12.prefab  # Boxy Robot (中型)
+├── Beast_13.prefab  # Tanker Robot (大型)
+├── Beast_14.prefab  # Metal Robot (BOSS)
 ```
+层级：Beast_XX → Visual → RobotAdjust (scale/Y/yaw) → Robot (Nested Prefab)
+原 Skeleton 节点保留但 disable。动画通过 `AnimatorOverrideController` 将 Skeleton_AnimatorController 参数映射到 Robot clips。
 
 ### 建筑
 ```
@@ -92,10 +98,18 @@ Resources/Materials/
 ### 动画
 ```
 Resources/Animations/
-├── Adventurer_AnimatorController.controller
-└── Skeleton_AnimatorController.controller
+├── Adventurer_AnimatorController.controller   # 角色 (isMoving/onAttack/onInteract/onDeath)
+└── Skeleton_AnimatorController.controller     # 骷髅 (isMoving/onAttack/onDeath)
 ```
 参数: isMoving(Bool), onAttack(Trigger), onDeath(Trigger)。Idle↔Walk, AnyState→Attack/Death。
+
+### Robot 动画（Beast 11-14）
+- Robot 自带 Controller 的 `m_AnimatorParameters: []` 全部为空，纯 ExitTime 自动过渡，无法外部控制
+- 运行时通过 `SetupRobotAnimator()` 创建 `AnimatorOverrideController(Skeleton_AnimatorController)` 替换
+- 按名称模糊匹配 Robot clips → 映射到 Idle_A / Walking_A / Hit_A / Death_A
+- 无匹配 clip 时用 Idle 兜底，避免 T-pose
+- `_hasParams` 标志控制是否调用 SetBool/SetTrigger
+- 暂停时 `_animator.speed = 0` 冻结动画
 
 ### 第三方素材包
 ```
@@ -104,6 +118,7 @@ KayKit_Skeletons_1.1_FREE/            # 骷髅模型
 KayKit_Forest_Nature_Pack_1.0_FREE/   # 树/灌木/草/石头 (共享 forest_texture.png)
 KayKit_Medieval_Hexagon_Pack_1.0_FREE/ # 建筑/城墙 (Base/Tower 用)
 Low_Poly_Forest_Pack_Devilswork.Shop_v02/ # 树/围栏 (fence24, treeTall03)
+Robots Ultimate Pack 01 Cute Series/      # Robot 野兽替换素材（Bot/Boxy/Tanker/Metal）
 ```
 
 ---
@@ -151,11 +166,60 @@ Create(state, parent)
 
 ---
 
-## 五、常见修改指南
+## 五、🔥 如何更换模型素材
+
+### 更换野兽 Robot（Beast_11~14）
+
+**在 Unity Editor 中操作，不需要写代码：**
+
+1. 在 Project 窗口找到 `Assets/Resources/Prefabs/Beasts/Beast_11.prefab`，双击打开 Prefab Mode
+2. 展开 `Beast_11 → Visual → RobotAdjust`，选中旧的 Robot 子节点，Delete
+3. 从 `Assets/Robots Ultimate Pack 01 Cute Series/.../Prefabs/` 拖入新的 Robot Prefab 到 RobotAdjust 下
+4. 调整 `RobotAdjust` 的 Transform：
+   - **localScale**：模型尺寸
+   - **localPosition.y**：脚底贴地偏移
+   - **localRotation.y**：模型正前方修正（0° = +Z 前方）
+5. 同法操作 Beast_12/13/14
+6. 如果新 Robot 的 Controller 也是零参数（`m_AnimatorParameters: []`），运行时 `SetupRobotAnimator()` 会自动创建 OverrideController
+7. 如果新 Robot 缺少 Die/Attack/Walk 动画，对应状态会用 Idle 兜底，不会崩溃
+
+**涉及文件**：仅 Beast_XX.prefab，不需要改任何 `.cs` 代码
+
+### 更换角色模型（Worker/Pioneer）
+
+**Prefab 内直接替换 FBX 节点：**
+
+1. 打开 `Assets/Resources/Prefabs/Units/Worker.prefab`
+2. 展开 `Worker → Visual → Model`，找到旧的 SkinnedMeshRenderer 子节点（如 `Barbarian_Head` 等），Delete
+3. 从新 FBX 资源拖入模型节点到 Model 下
+4. 选中 `Model` 节点，在 Inspector 中更新 Animator 的 Avatar 为新的
+5. 如果新 FBX 也是 Humanoid（KayKit 冒险者系列都是），`Adventurer_AnimatorController` 可直接复用
+6. 如果新 FBX 是 Generic 或不同骨骼：
+   - 替换 `Model` 上的 Animator Controller 为新素材自带的
+   - 在 `UnitView.ConfigureFromUnitPrefab()` 或 `ConfigureFromBeastPrefab()` 中确认 `_animator` 引用和参数名兼容
+   - 如参数名不同，在 `UpdateAnimation()` / `TriggerAttack()` / `TriggerDeath()` 中适配
+
+**注意**：Worker/Pioneer 是 Humanoid + `Adventurer_AnimatorController`，有完整 isMoving/onAttack/onDeath 参数，换同包内其他角色（Barbarian→Knight 等）只需换 FBX + Avatar。
+
+### 换模型后必须验证
+
+- [ ] Play Mode 中 Idle 动画正常循环
+- [ ] 移动时不滑行（Walk clip 匹配）
+- [ ] 攻击和死亡动画触发正确
+- [ ] 脚底贴地（调 RobotAdjust.y 或 Prefab root position）
+- [ ] 模型正前方朝向正确（调 RobotAdjust.yaw 或 Model rotation）
+- [ ] 血条在头顶上方可见
+- [ ] Console 无 Animator 参数/状态相关错误
+
+---
+
+## 六、常见修改指南
 
 | 想做什么 | 文件 | 复杂度 |
 |---------|------|:---:|
-| 调血条高度/宽度 | `UnitView.cs` UpgradeHpTo3D() 中的 `_hpY`/`_hpW` 计算 | 低 |
+| 调血条高度/宽度 | `UnitView.cs` UpgradeHpTo3D() 中的 `_hpY`/`_hpW` 计算（野兽按 type 11-14 独立配置） | 低 |
+| 调野兽模型大小/高度 | Beast Prefab 中 `Visual/RobotAdjust` 的 localScale / localPosition.y / localRotation.y | 低 |
+| 换野兽 Robot | Beast Prefab 中删除旧 Robot 子节点 → 拖入新 Robot Prefab 到 RobotAdjust 下 | 低 |
 | 调树大小/概率 | `SceneBuilder.cs` BuildForestSkirt() 中的 treeProb/scale | 低 |
 | 调矿石大小 | `ResourceViewManager.cs` GetOrCreate() 中的 scale | 低 |
 | 加新单位类型 | `UnitView.UNIT_PREFABS` + Prefab | 中 |
@@ -164,7 +228,7 @@ Create(state, parent)
 
 ---
 
-## 六、🔥 已知大坑
+## 七、🔥 已知大坑
 
 | 坑 | 说明 |
 |----|------|
@@ -177,10 +241,12 @@ Create(state, parent)
 | **Mathf.SmoothStep ≠ HLSL smoothstep** | C# `Mathf.SmoothStep(from,to,t)` 是插值函数（以 t 为 0~1 因子在 from/to 间插值），不是 HLSL `smoothstep(edge0,edge1,x)` 的 0~1 阶跃。圆环遮罩和昼夜 Blend 必须用自定义 `Smooth01`（基于 `Clamp01` + Hermite 曲线），见 `MatLib.Smooth01()` 和 `DayNightController.Smooth01()` |
 | **昼夜 130 回合/天** | `StateEngine.DayOf(n)` / `IsNight(n)` 硬编码 130 回合周期（80 白天 + 50 夜晚）。`DayNightController` 通过 `ReplayPlayer.RoundFloat`（连续浮点值）计算 `cyclePosition = Mathf.Repeat(roundFloat, 130f)`，黄昏 72-80、黎明 122-130 |
 | **NPC T-Pose：Animator Controller 缺失** | OfficerNPC/VendorNPC Prefab 的 Animator 虽有有效 Avatar，但 `m_Controller: {fileID: 0}`。Humanoid 模型 + 无 Controller = bind pose（双手张开）。赋 Adventurer_AnimatorController 即可复用 KayKit Idle_A。SCENE BUILDER 静态 NPC 不会走 UnitView.ConfigureFromUnitPrefab，必须在 BuildNeutralNpc 中单独添加组件 |
+| **Robot Controller 零参数** | 所有 Robot 素材包的 `.controller` 都是 `m_AnimatorParameters: []`，纯 ExitTime 链式过渡，外部无法控制。必须用 `AnimatorOverrideController(Skeleton_AnimatorController)` 替换，按名称模糊匹配 Idle/Walk/Attack/Death clip。Boxy/Tanker 缺少 Die 状态，Metal Robot 最完整 | 
+| **Robot Prefab 不在 Resources 下** | `Resources.Load` 无法加载。必须通过 Nested Prefab 引用（拖入 Beast Prefab 内部）或 PrefabRefs 序列化字段。不要用 `AssetDatabase.LoadAssetAtPath`（仅 Editor 可用，Build 失效） |
 
 ---
 
-## 七、近期改动
+## 八、近期改动
 
 | 日期 | 改动 |
 |------|------|
@@ -194,4 +260,7 @@ Create(state, parent)
 | 2026-08-11 | **SelRing 阵营光圈修复**：根因为 `Mathf.SmoothStep` C# 插值语义 ≠ HLSL smoothstep 阶跃；颜色改为贴图像素烘焙（不依赖 shader `_Color`）；Shader 从 `Legacy Shaders/Particles/Additive` 改为 `Sprites/Default`；新增 `MatLib.Smooth01()` + `CreateRingTex()` 抗锯齿圆环生成；光圈缩小至 0.8 倍 |
 | 2026-08-11 | **昼夜系统 v2**：四阶段 `LightingProfile`；Dusk 暖金/Night 浅蓝 I=0.78/Dawn 桃色；时间 0-5 Dawn→Day / 5-65 Day / 65-76 Day→Dusk / 76-80 Dusk→Night / 80-125 Night / 125-130 Night→Dawn |
 | 2026-08-11 | **NPC Idle + 转向**：修复 OfficerNPC/VendorNPC T-Pose（根因 Prefab `m_Controller:{fileID:0}` 无 Controller）；赋 `Adventurer_AnimatorController`；`NpcFacingController`（切比雪夫 + 命令优先级 + Visual 节点平滑 Y 轴旋转）；`ReplayPlayer.roundActions` |
+| 2026-08-12 | **Robot 野兽替换**：Beast_11~14 改用 Robot 素材包 Nested Prefab（Bot/Boxy/Tanker/Metal）；Visual → RobotAdjust 容器（独立 scale/Y/yaw）；`SetupRobotAnimator()` 通过 `AnimatorOverrideController` 映射 Skeleton 参数到 Robot clips；暂停冻结动画（`_animator.speed=0`）；血条按类型独立配置；移除运行时 AssetDatabase 依赖 |
+| 2026-08-12 | **Free 相机模式**：`ReplayCameraRig` 新增 `CameraMode.Free`；左键平移/右键旋转/滚轮向鼠标位置缩放；pivot 地图边界 clamp；4 号快捷键 + UI 🆓 按钮；暂停时可用 `unscaledDeltaTime` |
+| 2026-08-12 | **TradeBadge 交易提示**：小贩 sell 和武器商店 buy 的世界空间徽标；`ReplayCommand.targetName` 解析贩卖/购买物品名；中文映射（copper→铜等）；背包 UI 队伍级聚合 |
 | 2026-08-10 | 动画僵死 Bug 根除 + 步幅对齐 + 昼夜自愈 |

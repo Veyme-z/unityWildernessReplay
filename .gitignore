@@ -62,6 +62,10 @@ ShaderCache/
 
 # Screenshots
 /[Ss]creenshots/
+Assets/Screenshots/
+
+# LOOK
+/LOOK/
 
 # Asset Store Tools
 /AssetStoreTools/

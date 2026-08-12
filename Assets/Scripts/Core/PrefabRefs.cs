@@ -19,14 +19,16 @@ public class PrefabRefs : MonoBehaviour
     public GameObject unitBasePrefab;
 
     [Header("3D 野兽模型（FBX 源文件）")]
-    [Tooltip("Beast 11 黑熊 → Skeleton_Minion")]
     public GameObject beastModel11;
-    [Tooltip("Beast 12 骷髅法师 → Skeleton_Mage")]
     public GameObject beastModel12;
-    [Tooltip("Beast 13 死亡战士 → Skeleton_Warrior")]
     public GameObject beastModel13;
-    [Tooltip("Beast 14 BOSS骑兵 → Skeleton_Rogue")]
     public GameObject beastModel14;
+
+    [Header("Robot 替换模型（优先级高于 Skeleton）")]
+    public GameObject robotModel11;
+    public GameObject robotModel12;
+    public GameObject robotModel13;
+    public GameObject robotModel14;
 
     [Header("3D 建筑模型")]
     [Tooltip("基地 (type 4)")]

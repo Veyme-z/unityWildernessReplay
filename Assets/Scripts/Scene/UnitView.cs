@@ -18,8 +18,9 @@ public class UnitView : MonoBehaviour
     float _hpY, _hpW;
     MeshRenderer _hpFillRend;
     MaterialPropertyBlock _mpb;
-    SpriteRenderer _spr;
     Animator _animator;
+    ReplayPlayer _player;
+    bool _hasParams = true;
 
     // ── 平滑转向 ──
     Vector3 _prevPos;
@@ -81,19 +82,19 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             }
         }
 
-        // 通用路径（方块/Sprite/运行时 3D 模型加载）
+        // 未知类型：创建空占位（所有已知类型 3-14 均有 Prefab）
+        Debug.LogWarning("[UnitView] 未知单位 type=" + u.type + " id=" + u.id + "，无对应 Prefab");
         var genericGo = new GameObject("Unit_" + u.id);
         genericGo.transform.SetParent(parent);
         var gv = genericGo.AddComponent<UnitView>();
         gv.state = u;
-        gv.Build();
         return gv;
     }
 
-    /// <summary>从 Beast Prefab 实例化后，找到子节点引用即可（prefab 中已全部配置好）</summary>
+    /// <summary>从 Beast Prefab 实例化后配置引用（模型已在 Prefab 中）。</summary>
     void ConfigureFromBeastPrefab()
     {
-        _lockRotation = false; // 野兽允许平滑转身
+        _lockRotation = false;
         _prevPos = transform.position;
 
         _body = transform.Find("Body");
@@ -113,7 +114,11 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
 
         _mpb = new MaterialPropertyBlock();
         _animator = GetComponentInChildren<Animator>();
-        if (_animator != null) _animator.applyRootMotion = false;
+        if (_animator != null)
+        {
+            _animator.applyRootMotion = false;
+            SetupRobotAnimator();
+        }
 
         var pv = GetComponentInChildren<Pickable>();
         if (pv != null) pv.view = this;
@@ -122,6 +127,30 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         EnsureRing();
         CalibrateBaseScale(1.5f);
         SetHp(state.hp, state.maxHp);
+    }
+
+    void SetupRobotAnimator()
+    {
+        if (_animator.runtimeAnimatorController == null) return;
+        if (_animator.parameterCount > 0) { _hasParams = true; return; }
+
+        var baseCtrl = Resources.Load<RuntimeAnimatorController>("Animations/Skeleton_AnimatorController");
+        if (baseCtrl == null) return;
+        var overrides = new AnimatorOverrideController(baseCtrl);
+        var robotClips = _animator.runtimeAnimatorController.animationClips;
+        if (robotClips != null && robotClips.Length > 0)
+        {
+            var idleClip  = FindClip(robotClips, "Idle");
+            var walkClip  = FindClip(robotClips, "Walk", "Run", "Fly", "Dash");
+            var atkClip   = FindClip(robotClips, "Attack", "Punch", "Slash", "Claw", "Projectile", "Slam");
+            var deathClip = FindClip(robotClips, "Die", "Death");
+            overrides["Idle_A"]    = idleClip ?? robotClips[0];
+            overrides["Walking_A"] = walkClip ?? idleClip ?? robotClips[0];
+            overrides["Hit_A"]     = atkClip  ?? idleClip ?? robotClips[0];
+            overrides["Death_A"]   = deathClip ?? idleClip ?? robotClips[0];
+        }
+        _animator.runtimeAnimatorController = overrides;
+        _hasParams = true;
     }
 
     /// <summary>从 Unit Prefab（Worker/Pioneer/NPC）实例化后，找到子节点引用并配置队伍颜色</summary>
@@ -195,104 +224,20 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         SetHp(state.hp, state.maxHp);
     }
 
-    void Build()
+    /// <summary>从 clips 中按优先级匹配第一个包含关键字的动画。</summary>
+
+    /// <summary>从 clips 中按优先级匹配第一个包含关键字的动画。</summary>
+    static AnimationClip FindClip(AnimationClip[] clips, params string[] keywords)
     {
-        _lockRotation = false; // 通用单位允许转身
-        _prevPos = transform.position;
-
-        var bodyGo = new GameObject("Body");
-        bodyGo.transform.SetParent(transform, false);
-        _body = bodyGo.transform;
-
-        // 外观优先级：3D 野兽 > Sprite 贴图 > 方块 fallback
-        bool hasVisual = TryLoadBeastModel(_body);
-        if (!hasVisual && UnitViewSprite.TryGetSprite(state.type, state.teamType))
-            BuildSpriteMode();
-        else if (!hasVisual)
-            BuildBoxMode();
-
-        // 3D 扁平卡片血条（Cube，自适应）
-        var cubeMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
-        float modelH = _body != null ? EstimateHeight(_body.gameObject) : 2f;
-        float modelW = _body != null ? EstimateWidth(_body.gameObject) : 0.5f;
-        _hpW = Mathf.Max(modelW, 0.3f);
-        if (state.type == 4) { _hpY = modelH + 2f; _hpW *= 1.6f; }
-        else if (state.type == 3) { _hpY = modelH + 0.5f; _hpW *= 1.6f; }
-        else if (state.type == 7) _hpY = modelH * 0.65f;
-        else _hpY = modelH * 0.55f;
-        _hpFill = CreateHpCube(transform, "HpFill", new Vector3(_hpW, 0.05f, 0.02f), new Color(0.267f, 0.925f, 0.435f), cubeMesh);
-        _hpFill.localPosition = new Vector3(0, _hpY, 0);
-        _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
-        _mpb = new MaterialPropertyBlock();
-
-        EnsureRing();
-
-        // 拾取碰撞体
-        var col = bodyGo.AddComponent<SphereCollider>();
-        col.isTrigger = true;
-        col.radius = state.type == 4 ? 1.2f : 0.6f;
-        col.center = new Vector3(0, state.type == 4 ? 0.8f : 0.5f, 0);
-        var pv = bodyGo.AddComponent<Pickable>();
-        pv.view = this;
-
-        SetHp(state.hp, state.maxHp);
-    }
-
-    // ---------- 3D 野兽模型加载 ----------
-    // 各类型对应的期望游戏内高度（米），网格 1 格 = 1m
-    static readonly float[] BEAST_SCALE = { 0,0,0,0,0,0,0,0,0,0,0, 1.0f, 1.1f, 1.2f, 1.6f };
-    // type 11=1.0  12=1.1  13=1.2  14=1.6（BOSS 略大）
-
-    /// <summary>从 PrefabRefs 加载野兽对应的 FBX 模型并实例化到 Visual 节点</summary>
-    bool TryLoadBeastModel(Transform parent)
-    {
-        if (state.type < 11 || state.type > 14) return false;
-
-        // 从 PrefabRefs 获取 FBX 源文件
-        var refs = PrefabRefs.Instance;
-        GameObject modelSource = null;
-        switch (state.type)
+        foreach (var kw in keywords)
         {
-            case 11: modelSource = refs.beastModel11; break;
-            case 12: modelSource = refs.beastModel12; break;
-            case 13: modelSource = refs.beastModel13; break;
-            case 14: modelSource = refs.beastModel14; break;
-        }
-        if (modelSource == null) { Debug.LogWarning("[UnitView] Beast type " + state.type + " model not assigned in PrefabRefs"); return false; }
-
-        // 实例化到 Visual/Body 节点下
-        var beastInstance = Object.Instantiate(modelSource, parent);
-        beastInstance.name = "Skeleton_" + state.type;
-
-        // 按模型实际高度缩放至期望的游戏内高度
-        float modelHeight = EstimateHeight(beastInstance);
-        float desiredHeight = (state.type >= 11 && state.type < BEAST_SCALE.Length) ? BEAST_SCALE[state.type] : 0.4f;
-        float s = modelHeight > 0.001f ? desiredHeight / modelHeight : 0.3f;
-        beastInstance.transform.localScale = Vector3.one * s;
-        beastInstance.transform.localPosition = Vector3.zero;
-        beastInstance.transform.localRotation = Quaternion.identity;
-
-        // 获取/创建 Animator 并绑定控制器
-        _animator = beastInstance.GetComponent<Animator>();
-        if (_animator == null) _animator = beastInstance.AddComponent<Animator>();
-        _animator.applyRootMotion = false;
-        var ctrl = Resources.Load<RuntimeAnimatorController>("Animations/Skeleton_AnimatorController");
-        if (ctrl != null) _animator.runtimeAnimatorController = ctrl;
-
-        // BOSS (type 14)：红色自发光
-        if (state.type == 14)
-        {
-            foreach (var r in beastInstance.GetComponentsInChildren<Renderer>())
+            foreach (var c in clips)
             {
-                var mpb = new MaterialPropertyBlock();
-                r.GetPropertyBlock(mpb);
-                mpb.SetColor("_EmissionColor", new Color(0.6f, 0f, 0f, 1f));
-                r.SetPropertyBlock(mpb);
+                if (c != null && c.name.IndexOf(kw, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    return c;
             }
         }
-
-        Debug.Log("[UnitView] Beast " + state.type + " 3D model loaded, scale=" + s.ToString("F2") + " (height " + modelHeight.ToString("F2") + "→" + desiredHeight.ToString("F2") + ")");
-        return true;
+        return null;
     }
 
     /// <summary>估算 GameObject 的包围盒高度</summary>
@@ -332,6 +277,10 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         if (state.type == 4) { _hpY = modelH + 2f; _hpW *= 1.6f; }
         else if (state.type == 3) { _hpY = modelH + 0.5f; _hpW *= 1.6f; }
         else if (state.type == 7) _hpY = modelH * 0.65f;
+        else if (state.type == 11) { _hpY = modelH + 0.4f; _hpW *= 1.3f; }
+        else if (state.type == 12) { _hpY = modelH - 0.2f; _hpW *= 1.3f; }
+        else if (state.type == 13) { _hpY = modelH + 1.8f; _hpW *= 2.5f; }
+        else if (state.type == 14) { _hpY = modelH + 1.8f; _hpW *= 2f; }
         else _hpY = modelH * 0.55f;
         // 销毁旧黑底 HpBar
         var oldBar = transform.Find("HpBar");
@@ -439,9 +388,10 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         try
         {
             if (isDead)
-                _animator.SetTrigger("onDeath");
-            // isMoving 由 LateUpdate 根据 state.moving 统一设置，这里不再处理
-            // 避免同一帧内两次 SetBool 造成状态抖动
+            {
+                if (_hasParams) _animator.SetTrigger("onDeath");
+                else _animator.Play("Die");
+            }
         }
         catch (System.Exception) { }
     }
@@ -450,7 +400,11 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
     public void TriggerAttack()
     {
         if (_animator == null) return;
-        try { _animator.SetTrigger("onAttack"); }
+        try
+        {
+            if (_hasParams) _animator.SetTrigger("onAttack");
+            else _animator.Play("Take Damage");
+        }
         catch (System.Exception) { }
     }
 
@@ -458,73 +412,12 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
     public void TriggerDeath()
     {
         if (_animator == null) return;
-        try { _animator.SetTrigger("onDeath"); }
-        catch (System.Exception) { }
-    }
-
-    void BuildBoxMode()
-    {
-        Color c = UnitViewSprite.UnitColor(state);
-        var m = MatLib.Get(c);
-        switch (state.type)
+        try
         {
-            case 4: // 基地：三层（占 2×2 格子）
-                AddBox("b0", new Vector3(0, 0.4f, 0), new Vector3(2.0f, 0.8f, 2.0f), m);
-                AddBox("b1", new Vector3(0, 1.1f, 0), new Vector3(1.5f, 0.6f, 1.5f), m);
-                AddBox("b2", new Vector3(0, 1.6f, 0), new Vector3(1.7f, 0.35f, 1.7f), MatLib.Get(UnitViewSprite.Lighten(c, 0.15f)));
-                break;
-            case 3: // 防御塔
-                AddBox("t0", new Vector3(0, 0.55f, 0), new Vector3(0.85f, 1.1f, 0.85f), m);
-                AddBox("t1", new Vector3(0, 1.25f, 0), new Vector3(0.5f, 0.35f, 0.5f), MatLib.Get(new Color(0.92f, 0.92f, 0.95f)));
-                break;
-            case 5: // 围墙
-                AddBox("w0", new Vector3(0, 0.3f, 0), new Vector3(0.92f, 0.6f, 0.92f), MatLib.Get(new Color(0.58f, 0.60f, 0.66f)));
-                break;
-            case 7: case 6: // 开拓者/工人
-                float body = state.type == 7 ? 0.55f : 0.5f;
-                AddBox("b0", new Vector3(0, body * 0.5f, 0), new Vector3(body, body, body), m);
-                AddBox("h0", new Vector3(0, body + 0.19f, 0), new Vector3(0.32f, 0.32f, 0.32f), MatLib.Get(new Color(0.9f, 0.76f, 0.6f)));
-                break;
-            default: // 野兽
-                float s = 0.7f;
-                AddBox("b0", new Vector3(0, s * 0.5f, 0), new Vector3(s, s, s * 0.9f), m);
-                AddBox("e0", new Vector3(0, s * 0.9f, 0), new Vector3(0.3f, 0.25f, 0.3f), MatLib.Get(new Color(0.95f, 0.25f, 0.2f)));
-                break;
+            if (_hasParams) _animator.SetTrigger("onDeath");
+            else _animator.Play("Die");
         }
-    }
-
-    // ---------- 2D 素材模式（billboard 立牌） ----------
-    void BuildSpriteMode()
-    {
-        UnitViewSprite.TryGetSprite(state.type, state.teamType);
-        var sp = UnitViewSprite.FindSprite(state.type.ToString());
-        var go = new GameObject("Sprite");
-        go.transform.SetParent(_body, false);
-        _spr = go.AddComponent<SpriteRenderer>();
-        _spr.sprite = sp;
-        _spr.sortingOrder = 10;
-        // PPU 已自动计算正确（base=width/2，其余=width/1），无需手动缩放
-        go.transform.localScale = Vector3.one;
-        // 立牌底部对齐格子地面：上移半个精灵高度
-        float h = sp.bounds.size.y;
-        go.transform.localPosition = new Vector3(0, h * 0.5f, 0);
-        var bb = go.AddComponent<Billboard>();
-        bb.enabled = true;
-    }
-
-    void AddBox(string name, Vector3 pos, Vector3 scale, Material m)
-    {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        go.name = name;
-        go.transform.SetParent(_body, false);
-        go.transform.localPosition = pos;
-        go.transform.localScale = scale;
-        var rend = go.GetComponent<Renderer>();
-        rend.sharedMaterial = m;
-        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        rend.receiveShadows = false;
-        var col = go.GetComponent<Collider>();
-        if (col != null) Destroy(col);
+        catch (System.Exception) { }
     }
 
     Transform CreateHpCube(Transform parent, string name, Vector3 size, Color color, Mesh cubeMesh)
@@ -544,22 +437,6 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         rend.receiveShadows = false;
         return go.transform;
     }
-
-    Transform CreateQuad(Transform parent, string name, Vector2 size, Color color)
-    {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        go.name = name;
-        go.transform.SetParent(parent, false);
-        go.transform.localScale = new Vector3(size.x, size.y, 1);
-        var rend = go.GetComponent<MeshRenderer>();
-        rend.sharedMaterial = MatLib.Get(color);
-        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        rend.receiveShadows = false;
-        var col = go.GetComponent<Collider>();
-        if (col != null) Destroy(col);
-        return go.transform;
-    }
-
     // ---------- 每帧刷新 ----------
     void LateUpdate()
     {
@@ -602,26 +479,30 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             if (!state.stun) _body.localRotation = Quaternion.identity;
         }
 
-        // ── 动画状态同步：基于物理速度的动态步幅对齐（Velocity-Based Stride Matching）──
+        // ── 动画状态同步 ──
         if (_animator != null)
         {
             try
             {
-                if (isMovingNow)
+                // 暂停时冻结动画
+                if (_player == null) _player = FindObjectOfType<ReplayPlayer>();
+                bool replayPlaying = _player?.playing ?? true;
+                if (!replayPlaying)
                 {
-                    // 计算当前帧真实的 3D 世界位移速度（米/秒）
+                    _animator.speed = 0f;
+                }
+                else if (isMovingNow)
+                {
                     float realSpeed = moveDir.magnitude / Time.deltaTime;
-                    // 动态乘以步幅系数与全局倍速，让迈腿频率像橡皮筋一样跟随身体位移
                     float targetAnimSpeed = realSpeed * strideCoefficient;
                     _animator.speed = Mathf.Clamp(targetAnimSpeed, 0.15f, 4.5f) * AnimatorSpeed;
                 }
                 else
                 {
-                    // 静止时，恢复默认动画播放速度
                     _animator.speed = AnimatorSpeed;
                 }
 
-                if (isMovingNow != _wasMoving)
+                if (_hasParams && isMovingNow != _wasMoving)
                 {
                     _wasMoving = isMovingNow;
                     _animator.SetBool("isMoving", isMovingNow);

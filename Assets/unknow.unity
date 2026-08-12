@@ -333,6 +333,10 @@ MonoBehaviour:
   beastModel12: {fileID: 919132149155446097, guid: 1bd94e568d6c21a40aa305aa331319ee, type: 3}
   beastModel13: {fileID: 919132149155446097, guid: 852d656bbb8f88b40acac79dab67d7c8, type: 3}
   beastModel14: {fileID: 919132149155446097, guid: efc26c2241936d34b90483ae1572b0ba, type: 3}
+  robotModel11: {fileID: 6090793989321345074, guid: 98d1c423d58597748b115778031be849, type: 3}
+  robotModel12: {fileID: 7685301724639964351, guid: ca2aae903a89d4949a85a514dd9231a7, type: 3}
+  robotModel13: {fileID: 916442621915741506, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+  robotModel14: {fileID: 4899142683160923205, guid: 77bf6dc1a4c05614a8c91b92db50ff38, type: 3}
   baseBuildingPrefab: {fileID: 0}
   towerBuildingPrefab: {fileID: 0}
   wallBuildingPrefab: {fileID: 0}
