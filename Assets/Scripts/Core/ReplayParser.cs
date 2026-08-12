@@ -192,7 +192,8 @@ public static class ReplayParser
                     action = MiniJson.Str(cd, "action") ?? "",
                     valid = MiniJson.Bool(cd, "valid", true),
                     queryInfo = MiniJson.Str(cd, "queryInfo") ?? "",
-                    taskAnswer = MiniJson.Str(cd, "taskAnswer") ?? ""
+                    taskAnswer = MiniJson.Str(cd, "taskAnswer") ?? "",
+                    targetName = MiniJson.Str(cd, "targetName") ?? ""
                 };
                 var tp = MiniJson.Obj(cd, "targetPos");
                 if (tp != null)

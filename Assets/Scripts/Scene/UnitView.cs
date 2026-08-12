@@ -11,16 +11,11 @@ using UnityEngine;
 /// </summary>
 public class UnitView : MonoBehaviour
 {
-    static readonly Dictionary<string, Sprite> _spriteCache = new Dictionary<string, Sprite>();
-    static readonly string[] SEMANTIC_NAMES =
-    { "", "", "", "tower", "base", "wall", "work", "pioneer", "", "", "",
-      "beat", "beat", "beat", "beat" };
-
     public UnitState state;
     Transform _body;
-    Transform _hpBar;
     Transform _hpFill;
     Transform _selRing;
+    float _hpY, _hpW;
     MeshRenderer _hpFillRend;
     MaterialPropertyBlock _mpb;
     SpriteRenderer _spr;
@@ -102,12 +97,10 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         _prevPos = transform.position;
 
         _body = transform.Find("Body");
+        if (_body == null) _body = transform.Find("Visual");
         if (_body == null) _body = transform;
 
-        _hpBar = transform.Find("HpBar");
         _hpFill = transform.Find("HpFill");
-        _selRing = transform.Find("SelRing");
-
         if (_hpFill != null)
         {
             _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
@@ -122,14 +115,12 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         _animator = GetComponentInChildren<Animator>();
         if (_animator != null) _animator.applyRootMotion = false;
 
-        // 确保 SelRing 默认隐藏
-        if (_selRing != null) _selRing.gameObject.SetActive(false);
-
-        // 补 Pickable.view 引用
         var pv = GetComponentInChildren<Pickable>();
         if (pv != null) pv.view = this;
 
-        CalibrateBaseScale(1.5f); // 野兽 1.5×
+        UpgradeHpTo3D();
+        EnsureRing();
+        CalibrateBaseScale(1.5f);
         SetHp(state.hp, state.maxHp);
     }
 
@@ -148,12 +139,10 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             transform.rotation = Quaternion.Euler(0f, -45f, 0f);
 
         _body = transform.Find("Body");
+        if (_body == null) _body = transform.Find("Visual");
         if (_body == null) _body = transform;
 
-        _hpBar = transform.Find("HpBar");
         _hpFill = transform.Find("HpFill");
-        _selRing = transform.Find("SelRing");
-
         if (_hpFill != null)
         {
             _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
@@ -167,8 +156,6 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         _mpb = new MaterialPropertyBlock();
         _animator = GetComponentInChildren<Animator>();
         if (_animator != null) _animator.applyRootMotion = false;
-
-        if (_selRing != null) _selRing.gameObject.SetActive(false);
 
         var pv = GetComponentInChildren<Pickable>();
         if (pv != null) pv.view = this;
@@ -191,6 +178,18 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         var tca = GetComponentInChildren<TeamColorApplicator>();
         if (tca != null) { tca.unitView = this; tca.ApplyTeamColor(); }
 
+        // NPC 转向组件：复用 Visual 节点作为旋转轴心
+        if (state.type == 8 || state.type == 9)
+        {
+            var fc = GetComponent<NpcFacingController>();
+            if (fc == null) fc = gameObject.AddComponent<NpcFacingController>();
+            fc.npcType = state.type;
+            var visual = transform.Find("Visual");
+            if (visual != null) fc.facingTransform = visual;
+        }
+
+        UpgradeHpTo3D();
+        EnsureRing();
         float targetW = state.type == 4 ? 2f : (state.type >= 6 && state.type <= 9) ? 1.5f : 1f;
         CalibrateBaseScale(targetW);
         SetHp(state.hp, state.maxHp);
@@ -207,35 +206,26 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
 
         // 外观优先级：3D 野兽 > Sprite 贴图 > 方块 fallback
         bool hasVisual = TryLoadBeastModel(_body);
-        if (!hasVisual && TryGetSprite(state.type, state.teamType))
+        if (!hasVisual && UnitViewSprite.TryGetSprite(state.type, state.teamType))
             BuildSpriteMode();
         else if (!hasVisual)
             BuildBoxMode();
 
-        // 血条（黑底 + 彩色填充）— 基地更高
-        float hpY = state.type == 4 ? 2.2f : 1.9f;
-        float hpW = state.type == 4 ? 1.2f : 0.7f;
-        _hpBar = CreateQuad(transform, "HpBar", new Vector2(hpW, 0.09f), new Color(0, 0, 0, 0.55f));
-        _hpBar.localPosition = new Vector3(0, hpY, 0);
-        _hpBar.gameObject.AddComponent<Billboard>();
-        var fill = CreateQuad(transform, "HpFill", new Vector2(hpW - 0.04f, 0.055f), Color.green);
-        fill.localPosition = new Vector3(0, hpY, 0.01f);
-        fill.gameObject.AddComponent<Billboard>();
-        _hpFill = fill;
-        _hpFillRend = fill.GetComponent<MeshRenderer>();
-        _hpFillRend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        _hpFillRend.receiveShadows = false;
+        // 3D 扁平卡片血条（Cube，自适应）
+        var cubeMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
+        float modelH = _body != null ? EstimateHeight(_body.gameObject) : 2f;
+        float modelW = _body != null ? EstimateWidth(_body.gameObject) : 0.5f;
+        _hpW = Mathf.Max(modelW, 0.3f);
+        if (state.type == 4) { _hpY = modelH + 2f; _hpW *= 1.6f; }
+        else if (state.type == 3) { _hpY = modelH + 0.5f; _hpW *= 1.6f; }
+        else if (state.type == 7) _hpY = modelH * 0.65f;
+        else _hpY = modelH * 0.55f;
+        _hpFill = CreateHpCube(transform, "HpFill", new Vector3(_hpW, 0.05f, 0.02f), new Color(0.267f, 0.925f, 0.435f), cubeMesh);
+        _hpFill.localPosition = new Vector3(0, _hpY, 0);
+        _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
         _mpb = new MaterialPropertyBlock();
 
-        // 选择圈
-        _selRing = CreateQuad(transform, "SelRing", new Vector2(0.9f, 0.9f), new Color(0.3f, 1f, 0.5f, 0.4f));
-        _selRing.localPosition = new Vector3(0, 0.06f, 0);
-        _selRing.localRotation = Quaternion.Euler(90, 0, 0);
-        _selRing.gameObject.AddComponent<Billboard>();
-        var sr = _selRing.GetComponent<MeshRenderer>();
-        sr.sharedMaterial = MatLib.Get(new Color(0.3f, 1f, 0.5f, 0.4f));
-        sr.sharedMaterial.mainTexture = MatLib.ringTex;
-        _selRing.gameObject.SetActive(false);
+        EnsureRing();
 
         // 拾取碰撞体
         var col = bodyGo.AddComponent<SphereCollider>();
@@ -315,7 +305,111 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             bounds.Encapsulate(r.bounds);
             hasRenderer = true;
         }
-        return hasRenderer ? bounds.size.y : 2f; // 默认 2m
+        return hasRenderer ? bounds.size.y : 2f;
+    }
+
+    /// <summary>估算 GameObject 的水平包围盒宽度（XZ 最大值）</summary>
+    float EstimateWidth(GameObject go)
+    {
+        var bounds = new Bounds(go.transform.position, Vector3.zero);
+        bool hasRenderer = false;
+        foreach (var r in go.GetComponentsInChildren<Renderer>())
+        {
+            bounds.Encapsulate(r.bounds);
+            hasRenderer = true;
+        }
+        return hasRenderer ? Mathf.Max(bounds.size.x, bounds.size.z) : 0.5f;
+    }
+
+    /// <summary>将 Prefab 中扁平的 Quad 血条在运行时升级为 3D Cube 网格</summary>
+    void UpgradeHpTo3D()
+    {
+        var cubeMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
+        float modelH = _body != null ? EstimateHeight(_body.gameObject) : 2f;
+        float modelW = _body != null ? EstimateWidth(_body.gameObject) : 0.5f;
+        _hpW = Mathf.Max(modelW, 0.3f);
+        // 基地/塔在模型顶部，开拓者 0.65，其余 0.55
+        if (state.type == 4) { _hpY = modelH + 2f; _hpW *= 1.6f; }
+        else if (state.type == 3) { _hpY = modelH + 0.5f; _hpW *= 1.6f; }
+        else if (state.type == 7) _hpY = modelH * 0.65f;
+        else _hpY = modelH * 0.55f;
+        // 销毁旧黑底 HpBar
+        var oldBar = transform.Find("HpBar");
+        if (oldBar != null) Destroy(oldBar.gameObject);
+        // 填充条
+        if (_hpFill == null)
+        {
+            _hpFill = CreateHpCube(transform, "HpFill", new Vector3(_hpW, 0.05f, 0.02f), new Color(0.267f, 0.925f, 0.435f), cubeMesh);
+            _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
+        }
+        else
+        {
+            var bb = _hpFill.GetComponent<Billboard>();
+            if (bb != null) Destroy(bb);
+            _hpFill.GetComponent<MeshFilter>().sharedMesh = cubeMesh;
+            _hpFill.localScale = new Vector3(_hpW, 0.05f, 0.02f);
+            if (_hpFillRend == null) _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
+            if (_hpFillRend != null && (_hpFillRend.sharedMaterial.name.Contains("Default") || _hpFillRend.sharedMaterial.shader.name != "Standard"))
+                _hpFillRend.sharedMaterial = new Material(Shader.Find("Standard")) { color = new Color(0.267f, 0.925f, 0.435f) };
+        }
+        _hpFill.localPosition = new Vector3(0, _hpY, 0);
+        _hpFill.localRotation = Quaternion.identity;
+        if (_hpFillRend == null) _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
+        if (_hpFillRend != null) { _hpFillRend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; _hpFillRend.receiveShadows = false; }
+        if (_mpb == null) _mpb = new MaterialPropertyBlock();
+    }
+
+    void EnsureRing()
+    {
+        // 仅 Worker(6) / Pioneer(7) 显示阵营光环
+        if (state.type != 6 && state.type != 7) return;
+        if (_selRing == null)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = "SelRing";
+            go.transform.SetParent(transform, false);
+            go.transform.localScale = new Vector3(0.8f, 0.8f, 1f);
+            var rend = go.GetComponent<MeshRenderer>();
+            // Sprites/Default 在这个项目中已验证 _Color 倍乘有效
+            var mat = new Material(MatLib.Shader2D);
+            mat.mainTexture = MatLib.ringTex;
+            rend.sharedMaterial = mat;
+            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            rend.receiveShadows = false;
+            var col = go.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+            _selRing = go.transform;
+        }
+        else
+        {
+            var bb = _selRing.GetComponent<Billboard>();
+            if (bb != null) Destroy(bb);
+        }
+        _selRing.localPosition = new Vector3(0, 0.02f, 0);
+        _selRing.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        _selRing.gameObject.SetActive(true);
+        ApplyRingColor();
+    }
+
+    void ApplyRingColor()
+    {
+        if (_selRing == null || state == null) return;
+        var sr = _selRing.GetComponent<MeshRenderer>();
+        if (sr == null) return;
+
+        Color ringColor;
+        if (state.teamType == "defender")
+            ringColor = new Color(1f, 0.176f, 0.333f, 1f);
+        else if (state.teamType == "challenger")
+            ringColor = new Color(0f, 0.478f, 1f, 1f);
+        else
+            return;
+
+        // 颜色直接烘焙到贴图像素中，不依赖 shader _Color
+        var coloredTex = MatLib.CreateRingTex(ringColor, 128);
+        sr.sharedMaterial.mainTexture = coloredTex;
+        // 重置 material.color 为白色，确保 Sprites/Default 的 tint 不影响已烘焙的颜色
+        sr.sharedMaterial.color = Color.white;
     }
 
     /// <summary>根据模型实际尺寸计算缩放和 pivot 偏移，使模型居中并占满格子</summary>
@@ -370,14 +464,14 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
 
     void BuildBoxMode()
     {
-        Color c = UnitColor(state);
+        Color c = UnitViewSprite.UnitColor(state);
         var m = MatLib.Get(c);
         switch (state.type)
         {
             case 4: // 基地：三层（占 2×2 格子）
                 AddBox("b0", new Vector3(0, 0.4f, 0), new Vector3(2.0f, 0.8f, 2.0f), m);
                 AddBox("b1", new Vector3(0, 1.1f, 0), new Vector3(1.5f, 0.6f, 1.5f), m);
-                AddBox("b2", new Vector3(0, 1.6f, 0), new Vector3(1.7f, 0.35f, 1.7f), MatLib.Get(Lighten(c, 0.15f)));
+                AddBox("b2", new Vector3(0, 1.6f, 0), new Vector3(1.7f, 0.35f, 1.7f), MatLib.Get(UnitViewSprite.Lighten(c, 0.15f)));
                 break;
             case 3: // 防御塔
                 AddBox("t0", new Vector3(0, 0.55f, 0), new Vector3(0.85f, 1.1f, 0.85f), m);
@@ -402,7 +496,8 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
     // ---------- 2D 素材模式（billboard 立牌） ----------
     void BuildSpriteMode()
     {
-        var sp = _spriteCache[state.type + "|" + (state.teamType ?? "")];
+        UnitViewSprite.TryGetSprite(state.type, state.teamType);
+        var sp = UnitViewSprite.FindSprite(state.type.ToString());
         var go = new GameObject("Sprite");
         go.transform.SetParent(_body, false);
         _spr = go.AddComponent<SpriteRenderer>();
@@ -430,6 +525,24 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         rend.receiveShadows = false;
         var col = go.GetComponent<Collider>();
         if (col != null) Destroy(col);
+    }
+
+    Transform CreateHpCube(Transform parent, string name, Vector3 size, Color color, Mesh cubeMesh)
+    {
+        var go = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
+        go.transform.SetParent(parent, false);
+        go.transform.localScale = size;
+        go.GetComponent<MeshFilter>().sharedMesh = cubeMesh;
+        var rend = go.GetComponent<MeshRenderer>();
+        // Standard shader 确保 MPB 变色和 3D 光照正常
+        var mat = new Material(Shader.Find("Standard"));
+        mat.color = color;
+        mat.SetFloat("_Metallic", 0f);
+        mat.SetFloat("_Glossiness", 0.2f);
+        rend.sharedMaterial = mat;
+        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rend.receiveShadows = false;
+        return go.transform;
     }
 
     Transform CreateQuad(Transform parent, string name, Vector2 size, Color color)
@@ -482,6 +595,13 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             }
         }
 
+        // ── 静止冻结：消除暂停时的抖动 ──
+        if (!isMovingNow && _body != null)
+        {
+            _body.localPosition = Vector3.zero;
+            if (!state.stun) _body.localRotation = Quaternion.identity;
+        }
+
         // ── 动画状态同步：基于物理速度的动态步幅对齐（Velocity-Based Stride Matching）──
         if (_animator != null)
         {
@@ -515,167 +635,23 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
 
     public void SetHp(int hp, int maxHp)
     {
-        if (_hpFill == null) return;
+        if (_hpFill == null || _hpFillRend == null) return;
         float pct = Mathf.Clamp01((float)hp / Mathf.Max(1, maxHp));
-        float fillW = state.type == 4 ? 1.16f : 0.66f;
-        _hpFill.localScale = new Vector3(fillW * pct, 0.055f, 1);
-        _hpFill.localPosition = new Vector3(-fillW * 0.5f * (1f - pct), _hpBar.localPosition.y, 0.01f);
-        Color c = pct > 0.6f ? new Color(0.44f, 0.88f, 0.54f)
-              : pct > 0.3f ? new Color(1f, 0.79f, 0.3f)
-              : new Color(1f, 0.36f, 0.36f);
+        float fillW = _hpW;
+        _hpFill.localScale = new Vector3(fillW * pct, 0.05f, 0.02f);
+        _hpFill.localPosition = new Vector3(-fillW * 0.5f * (1f - pct), _hpY, 0);
+        Color c = pct > 0.6f ? new Color(0.267f, 0.925f, 0.435f)
+              : pct > 0.3f ? new Color(1f, 0.788f, 0.302f)
+              : new Color(1f, 0.231f, 0.188f);
         _mpb.SetColor("_Color", c);
         _hpFillRend.SetPropertyBlock(_mpb);
     }
 
-    public void SetSelected(bool sel)
-    {
-        if (_selRing != null) _selRing.gameObject.SetActive(sel);
-    }
 
     public void SetStun(bool stun)
     {
-        // 简化：眩晕时身体旋转 180° 的"昏倒"表现 + 黄色环
         if (_body != null)
             _body.localRotation = stun ? Quaternion.Euler(0, 0, 90) : Quaternion.identity;
-        if (_selRing != null)
-        {
-            _selRing.gameObject.SetActive(stun);
-            var r = _selRing.GetComponent<MeshRenderer>();
-            if (r != null && r.sharedMaterial != null) r.sharedMaterial.color = new Color(1f, 0.85f, 0.2f, 0.6f);
-        }
     }
 
-    // ---------- 静态工具 ----------
-    // 全 Resources 目录的图片清单（自动扫描，不限制子文件夹/大小写）
-    static Dictionary<string, Sprite> _allSprites;
-    static bool _scanned;
-
-    static string Norm(string n)
-    {
-        if (string.IsNullOrEmpty(n)) return "";
-        string r = n.ToLowerInvariant();
-        if (r.EndsWith(".png")) r = r.Substring(0, r.Length - 4);
-        if (r.EndsWith(".jpg")) r = r.Substring(0, r.Length - 4);
-        if (r.EndsWith(".jpeg")) r = r.Substring(0, r.Length - 5);
-        return r;
-    }
-
-    /// <summary>按名字（多个候选）在 Resources 里找图，找不到返回 null</summary>
-    public static Sprite FindSprite(params string[] names)
-    {
-        ScanAllSprites();
-        foreach (var n in names)
-        {
-            Sprite sp;
-            if (_allSprites.TryGetValue(Norm(n), out sp) && sp != null) return sp;
-        }
-        return null;
-    }
-
-    /// <summary>扫描 Resources 下所有图片（任意子文件夹都行），名字(小写) → Sprite</summary>
-    static void ScanAllSprites()
-    {
-        if (_scanned) return;
-        _scanned = true;
-        _allSprites = new Dictionary<string, Sprite>();
-        var texs = new List<Texture2D>();
-        var sps = Resources.LoadAll<Sprite>("");
-        foreach (var sp in sps)
-            if (sp != null && sp.texture != null && !texs.Contains(sp.texture))
-                texs.Add(sp.texture);
-        var rawTexs = Resources.LoadAll<Texture2D>("");
-        foreach (var t in rawTexs)
-            if (t != null && !texs.Contains(t))
-                texs.Add(t);
-        foreach (var t in texs)
-        {
-            string key = Norm(t.name);
-            if (key.Length == 0 || _allSprites.ContainsKey(key)) continue;
-            // 高清副本（去 mipmap）避免远景模糊
-            var hi = MatLib.CreateHiResCopy(t);
-            float ppu = GetAutoPPU(t.name, hi.width);
-            _allSprites[key] = Sprite.Create(hi, new Rect(0, 0, hi.width, hi.height),
-                                             new Vector2(0.5f, 0.5f), ppu);
-        }
-        // 打印一次清单，方便排查（Console 里搜 "找到"）
-        var sb = new StringBuilder("找到的 Resources 图片: ");
-        foreach (var k in _allSprites.Keys) sb.Append(k).Append(" ");
-        Debug.Log(sb.ToString());
-    }
-
-    /// <summary>
-    /// 根据贴图名称自动推断 PPU（ pixels per unit ），使精灵在场景中恰好覆盖期望的格子数。
-    /// 规则：
-    ///   background → 宽占 41 格（整张地图，不变）
-    ///   任务官     → 宽占 4 格
-    ///   基地       → 宽占 3 格
-    ///   中立建筑   → 宽占 3 格（小贩/武器商店）
-    ///   角色       → 宽占 2 格（工人/开拓者）
-    ///   其余       → 宽占 1.5 格（塔/墙/野兽/资源）
-    /// </summary>
-    static float GetAutoPPU(string texName, int pixelWidth)
-    {
-        if (string.IsNullOrEmpty(texName) || pixelWidth <= 0) return 100f;
-        string lower = texName.ToLowerInvariant();
-        if (lower.Contains("background")) return pixelWidth / 41f;
-        if (lower.Contains("officer"))    return pixelWidth / 4f;
-        if (lower.Contains("base"))       return pixelWidth / 3f;
-        if (lower.Contains("vendor")
-            || lower.Contains("weaponshop") || lower.Contains("shop"))
-            return pixelWidth / 3f;
-        if (lower.Contains("work") || lower.Contains("pioneer"))
-            return pixelWidth / 2f;
-        return pixelWidth / 1.5f;
-    }
-
-    static bool TryGetSprite(int type, string teamType)
-    {
-        Sprite s;
-        // 缓存键：type + teamType，确保不同队伍拿到不同精灵
-        string cacheKey = type + "|" + (teamType ?? "");
-        if (_spriteCache.TryGetValue(cacheKey, out s)) return s != null;
-        ScanAllSprites();
-        if (_allSprites == null) return false;
-        Sprite found = null;
-        // 防御方(蓝方)优先使用 blue 版本
-        if (teamType == "defender" && (type == 4 || type == 3))
-        {
-            string blueName = (type == 4) ? "base_blue" : "tower_blue";
-            _allSprites.TryGetValue(blueName, out found);
-        }
-        // 语义名优先（base/tower/worker/pioneer/...），再数字名（4/3/6/7/11...）
-        if (found == null)
-        {
-            string sem = (type >= 0 && type < SEMANTIC_NAMES.Length) ? SEMANTIC_NAMES[type] : "";
-            if (!string.IsNullOrEmpty(sem))
-                _allSprites.TryGetValue(sem, out found);
-        }
-        if (found == null)
-            _allSprites.TryGetValue(type.ToString(), out found);
-        _spriteCache[cacheKey] = found;
-        if (found == null)
-            Debug.LogWarning("[UnitView] 类型 " + type + (teamType == "defender" ? "(defender)" : "")
-                + " 没找到对应图片，用方块占位。请把图片放到 Assets/Resources 下（任意子文件夹），命名如 base.png / tower.png / " + type + ".png");
-        return found != null;
-    }
-
-    static Color UnitColor(UnitState u)
-    {
-        switch (u.type)
-        {
-            case 11: return new Color(0.48f, 0.29f, 0.17f);
-            case 12: return new Color(0.42f, 0.31f, 0.63f);
-            case 13: return new Color(0.24f, 0.24f, 0.30f);
-            case 14: return new Color(0.55f, 0.12f, 0.12f);
-            default:
-                return u.teamType == "defender" ? new Color(0.88f, 0.27f, 0.20f)
-                     : u.teamType == "challenger" ? new Color(0.27f, 0.48f, 0.92f)
-                     : new Color(0.6f, 0.6f, 0.6f);
-        }
-    }
-
-    static Color Lighten(Color c, float amt)
-    {
-        return new Color(Mathf.Min(1, c.r + amt), Mathf.Min(1, c.g + amt), Mathf.Min(1, c.b + amt), c.a);
-    }
 }

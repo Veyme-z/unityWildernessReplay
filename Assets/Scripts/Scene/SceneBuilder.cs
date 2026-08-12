@@ -361,13 +361,23 @@ public static class SceneBuilder
             if (t == 8) go.transform.rotation = Quaternion.Euler(0f, 135f, 0f);
             else if (t == 9) go.transform.rotation = Quaternion.Euler(0f, -45f, 0f);
             else if (t == 10) go.transform.rotation = Quaternion.Euler(0f, 225f, 0f); // 西南
+
+            // NPC 转向组件
+            if (t == 8 || t == 9)
+            {
+                var fc = go.GetComponent<NpcFacingController>();
+                if (fc == null) fc = go.AddComponent<NpcFacingController>();
+                fc.npcType = t;
+                var visual = go.transform.Find("Visual");
+                if (visual != null) fc.facingTransform = visual;
+            }
         }
         else
         {
             Sprite spr = null;
-            if (t == 8) spr = UnitView.FindSprite("officer", "taskofficer", "8");
-            else if (t == 9) spr = UnitView.FindSprite("vendor", "trader", "9");
-            else spr = UnitView.FindSprite("weaponshop", "shop", "10");
+            if (t == 8) spr = UnitViewSprite.FindSprite("officer", "taskofficer", "8");
+            else if (t == 9) spr = UnitViewSprite.FindSprite("vendor", "trader", "9");
+            else spr = UnitViewSprite.FindSprite("weaponshop", "shop", "10");
 
             if (spr != null)
             {
@@ -430,12 +440,5 @@ public static class SceneBuilder
             }
         tex.Apply(false, true);
         return tex;
-    }
-
-    public static void SetBackgroundNight(bool night)
-    {
-        RenderSettings.ambientLight = night
-            ? new Color(0.12f, 0.15f, 0.22f)
-            : new Color(0.55f, 0.62f, 0.7f);
     }
 }

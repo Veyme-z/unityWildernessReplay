@@ -1,13 +1,7 @@
 using UnityEngine;
 
-/// <summary>
-/// 队伍颜色应用器：运行时根据 UnitView.state.teamType 自动染色 3D 模型和脚底光环。
-/// 挂载在角色 Prefab 的根节点（UnitView 同级或子节点均可）。
-/// </summary>
 public class TeamColorApplicator : MonoBehaviour
 {
-    static readonly int ColorProp = Shader.PropertyToID("_Color");
-
     public UnitView unitView;
 
     void Start()
@@ -17,48 +11,33 @@ public class TeamColorApplicator : MonoBehaviour
         ApplyTeamColor();
     }
 
-    /// <summary>由 UnitView 在 Configure 阶段显式调用（可能早于 Start）</summary>
     public void ApplyTeamColor()
     {
         if (unitView == null || unitView.state == null) return;
 
-        Color teamTint;
         Color ringColor;
-
         if (unitView.state.teamType == "defender")
-        {
-            teamTint = new Color(1f, 0.55f, 0.55f, 1f);   // 浅红染色（保留纹理细节）
-            ringColor = new Color(1f, 0.15f, 0.15f, 0.45f); // 红色光环
-        }
+            ringColor = new Color(1f, 0.176f, 0.333f, 0.8f);   // #FF2D55 霓虹红
         else if (unitView.state.teamType == "challenger")
-        {
-            teamTint = new Color(0.55f, 0.65f, 1f, 1f);     // 浅蓝染色
-            ringColor = new Color(0.15f, 0.25f, 1f, 0.45f); // 蓝色光环
-        }
+            ringColor = new Color(0f, 0.478f, 1f, 0.8f);       // #007AFF 霓虹蓝
         else
-        {
-            return; // 中立 NPC 不染色
-        }
+            return;
 
-        // 1. 对所有 Renderer 染色（SkinnedMeshRenderer + MeshRenderer）
-        var mpb = new MaterialPropertyBlock();
-        foreach (var r in GetComponentsInChildren<Renderer>(true))
-        {
-            r.GetPropertyBlock(mpb);
-            mpb.SetColor(ColorProp, teamTint);
-            r.SetPropertyBlock(mpb);
-        }
-
-        // 2. 染色脚底 SelRing
-        var root = unitView.transform;
-        var selRing = root.Find("SelRing");
+        var selRing = unitView.transform.Find("SelRing");
         if (selRing != null)
         {
+            selRing.gameObject.SetActive(true);
             var sr = selRing.GetComponent<MeshRenderer>();
-            if (sr != null && sr.sharedMaterial != null)
+            if (sr != null)
             {
-                // 创建实例材质避免污染 prefab
-                sr.material.color = ringColor;
+                // 颜色直接烘焙到贴图像素中，不依赖 shader _Color
+                var coloredTex = MatLib.CreateRingTex(ringColor, 128);
+                // Sprites/Default 在这个项目中已验证可用
+                sr.sharedMaterial = new Material(MatLib.Shader2D);
+                sr.sharedMaterial.mainTexture = coloredTex;
+                sr.sharedMaterial.color = Color.white; // 避免 Sprites/Default 二次染色
+                sr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                sr.receiveShadows = false;
             }
         }
     }

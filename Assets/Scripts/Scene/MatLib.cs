@@ -96,17 +96,7 @@ public static class MatLib
         whiteTex.Apply();
         whiteTex.wrapMode = TextureWrapMode.Clamp;
 
-        ringTex = new Texture2D(64, 64, TextureFormat.RGBA32, false);
-        for (int y = 0; y < 64; y++)
-            for (int x = 0; x < 64; x++)
-            {
-                float dx = x - 31.5f, dy = y - 31.5f;
-                float d = Mathf.Sqrt(dx * dx + dy * dy);
-                float a = (d >= 22f && d <= 30f) ? 1f : 0f;
-                ringTex.SetPixel(x, y, new Color(1, 1, 1, a));
-            }
-        ringTex.Apply();
-        ringTex.wrapMode = TextureWrapMode.Clamp;
+        ringTex = CreateRingTex(Color.white, 64);
 
         dotTex = new Texture2D(64, 64, TextureFormat.RGBA32, false);
         for (int y = 0; y < 64; y++)
@@ -134,5 +124,43 @@ public static class MatLib
             }
         panelTex.Apply();
         panelTex.wrapMode = TextureWrapMode.Clamp;
+    }
+
+    /// <summary>HLSL 兼容的 smoothstep：返回 0~1 阶跃值（不同于 Mathf.SmoothStep 的插值语义）。</summary>
+    static float Smooth01(float edge0, float edge1, float value)
+    {
+        float t = Mathf.Clamp01((value - edge0) / (edge1 - edge0));
+        return t * t * (3f - 2f * t);
+    }
+
+    /// <summary>创建带颜色烘焙的抗锯齿圆环贴图。颜色直接写入像素，不依赖 shader _Color 乘法。</summary>
+    public static Texture2D CreateRingTex(Color color, int size = 128)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+
+        float center = (size - 1) * 0.5f;
+        float innerRadius = size * 0.34f;
+        float outerRadius = size * 0.47f;
+        float feather = 1.5f;
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x - center;
+                float dy = y - center;
+                float distance = Mathf.Sqrt(dx * dx + dy * dy);
+
+                float innerMask = Smooth01(innerRadius - feather, innerRadius + feather, distance);
+                float outerMask = 1f - Smooth01(outerRadius - feather, outerRadius + feather, distance);
+                float alpha = innerMask * outerMask * color.a;
+
+                tex.SetPixel(x, y, new Color(color.r, color.g, color.b, alpha));
+            }
+        }
+        tex.Apply(false, false);
+        return tex;
     }
 }

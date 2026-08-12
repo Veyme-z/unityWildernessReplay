@@ -27,6 +27,14 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
     float _acc;
     float RoundDur { get { return baseRoundDuration / SPEEDS[speedIndex]; } }
 
+    /// <summary>当前回合各单位执行的动作（unitId → action），供 NpcFacingController 查询。</summary>
+    public Dictionary<long, string> roundActions = new Dictionary<long, string>();
+
+    /// <summary>当前回合内的插值进度（0~1），供 DayNightController 等系统使用。</summary>
+    public float RoundProgress { get { return Mathf.Clamp01(_acc / RoundDur); } }
+    /// <summary>连续回合浮点值（0-indexed）：cur - 1 + RoundProgress，消除回合边界跳变。</summary>
+    public float RoundFloat { get { return (cur - 1) + RoundProgress; } }
+
     public int TotalRounds { get { return data != null ? data.rounds.Count : 0; } }
 
     // ---------- 初始化 ----------
@@ -58,6 +66,7 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
         if (data.rounds.Count > 0)
         {
             cur = 1;
+            roundActions.Clear();
             engine.Diff(null, data.rounds[0], false);
         }
         RefreshResources();
@@ -76,6 +85,8 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
         if (data == null) return;
         int target = Mathf.Clamp(cur + delta, 1, TotalRounds);
         if (target == cur) return;
+        TradeBadge.Cleanup();
+        roundActions.Clear();
         int step = target > cur ? 1 : -1;
         ReplayRound prev = cur >= 1 && cur <= TotalRounds ? data.rounds[cur - 1] : null;
         while (cur != target)
@@ -134,6 +145,7 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
     {
         if (data == null) return;
         SetPlaying(false);
+        TradeBadge.Cleanup();
 
         // 清空旧单位与视图 + 资源矿点
         foreach (var u in engine.units.Values)
@@ -145,7 +157,7 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
         engine.Init(data.start);
         cur = 1;
         _acc = 0;
-        _selected = 0;
+        roundActions.Clear();
         if (data.rounds.Count > 0) engine.Diff(null, data.rounds[0], false);
 
         // 为第 1 回合存活的单位补建视图（无声效）
@@ -160,10 +172,7 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
 void OnRoundEntered(int n)
     {
         // 强行同步全局背景和场景光照，确保在重播或拖动进度条时背景颜色瞬间自愈刷新
-        int tick = (n - 1) % 130;
-        bool isNightNow = tick >= 80;
-        SceneBuilder.SetBackgroundNight(isNightNow);
-
+        // 相位变化检测（仅用于日志；光照由 DayNightController 统一管理）
         int day = StateEngine.DayOf(n);
         bool night = StateEngine.IsNight(n);
         bool changed = n == 1
@@ -190,7 +199,6 @@ void OnRoundEntered(int n)
     {
         string prefix = string.IsNullOrEmpty(teamType) ? "" : TeamTag(teamType) + "：";
         string msg = "<b>[回合" + cur + "]</b> " + prefix + text;
-        Debug.Log("[Event] " + type + ": " + text);
         if (_eventLog != null) _eventLog.AddEventLog(msg, type);
     }
     public void Toast(string text) { }
@@ -227,6 +235,7 @@ void OnRoundEntered(int n)
 
     public void OnCommand(UnitState u, ReplayCommand c)
     {
+        roundActions[u.id] = c.action;
         if (!c.valid) return;
         var wp = engine.CellToWorld(c.x, c.y);
         string pos = "(" + c.x + "," + c.y + ")";
@@ -247,10 +256,12 @@ void OnRoundEntered(int n)
             case "sell":
                 Log("trade", u.DisplayName + " 贩卖 " + pos, tt);
                 FxFactory.Ring(wp, new Color(1f, 0.7f, 0.36f, 0.9f));
+                if (c.valid) TryShowTradeBadge(u, c.targetName);
                 break;
             case "buy":
                 Log("trade", u.DisplayName + " 购买 " + pos, tt);
                 FxFactory.Ring(wp, new Color(0.6f, 0.75f, 1f, 0.9f));
+                if (c.valid) TryShowShopBadge(u, c.targetName);
                 break;
             case "executeTask":
                 Log("task", u.DisplayName + " 接取任务", tt);
@@ -284,7 +295,39 @@ void OnRoundEntered(int n)
     public void OnPhaseChange(int day, bool isNight)
     {
         Log("info", (isNight ? "🌙 第" : "☀ 第") + day + "天 " + (isNight ? "黑夜降临" : "天亮"));
-        SceneBuilder.SetBackgroundNight(isNight);
+        // 光照统一由 DayNightController 管理，此处仅记录日志
+    }
+
+    /// <summary>sell 有效且执行者在小贩周围一格内 → 显示交易徽标。</summary>
+    void TryShowTradeBadge(UnitState u, string targetName)
+    {
+        var vendorGo = GameObject.Find("NPC_9_20_15");
+        if (vendorGo == null) return;
+
+        var vp = vendorGo.transform.position;
+        int vgx = Mathf.RoundToInt(vp.x + 20f);
+        int vgy = Mathf.RoundToInt(15.5f - vp.z);
+        int ugx = Mathf.RoundToInt(u.pos.x + 20f);
+        int ugy = Mathf.RoundToInt(15.5f - u.pos.z);
+
+        if (Mathf.Max(Mathf.Abs(ugx - vgx), Mathf.Abs(ugy - vgy)) <= 1)
+            TradeBadge.Show(vendorGo.transform, targetName ?? "copper", 1);
+    }
+
+    /// <summary>buy 有效且执行者在武器商店周围一格内 → 显示购买徽标。</summary>
+    void TryShowShopBadge(UnitState u, string targetName)
+    {
+        var shopGo = GameObject.Find("NPC_10_25_11");
+        if (shopGo == null) return;
+
+        var sp = shopGo.transform.position;
+        int sgx = Mathf.RoundToInt(sp.x + 20f);
+        int sgy = Mathf.RoundToInt(15.5f - sp.z);
+        int ugx = Mathf.RoundToInt(u.pos.x + 20f);
+        int ugy = Mathf.RoundToInt(15.5f - u.pos.z);
+
+        if (Mathf.Max(Mathf.Abs(ugx - sgx), Mathf.Abs(ugy - sgy)) <= 1)
+            TradeBadge.Show(shopGo.transform, targetName ?? "购买", 1, 2.3f, 1.2f);
     }
 
     // ---------- 每帧 ----------
@@ -311,6 +354,7 @@ void OnRoundEntered(int n)
                 }
                 var prev = data.rounds[cur - 1];
                 var nrec = data.rounds[nn - 1];
+                roundActions.Clear();
                 engine.Diff(prev, nrec, true);
                 cur = nn;
                 OnRoundEntered(nn);
@@ -366,42 +410,6 @@ void OnRoundEntered(int n)
         foreach (var kv in engine.units) if (kv.Value.dead) deadIds.Add(kv.Key);
         foreach (var id in deadIds) engine.units.Remove(id);
 
-        HandleClick();
-    }
-
-    // ---------- 点击拾取 ----------
-    long _selected;
-
-    void HandleClick()
-    {
-        if (!Input.GetMouseButtonDown(0)) return;
-        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
-
-        var cam = Camera.main;
-        if (cam == null) return;
-        var ray = cam.ScreenPointToRay(Input.mousePosition);
-        RaycastHit hit;
-        if (Physics.Raycast(ray, out hit, 1000f))
-        {
-            var p = hit.collider.GetComponentInParent<Pickable>();
-            if (p != null && p.view != null)
-            {
-                Select(p.view.state);
-                return;
-            }
-        }
-        Select(null);
-    }
-
-    void Select(UnitState u)
-    {
-        UnitState prev = _selected > 0 ? engine.GetUnit(_selected) : null;
-        if (prev != null && prev.view != null) prev.view.SetSelected(false);
-        _selected = u != null ? u.id : 0;
-        if (u != null && u.view != null)
-        {
-            u.view.SetSelected(true);
-        }
     }
 
     /// <summary>刷新当前回合的资源矿点显示</summary>
@@ -410,31 +418,6 @@ void OnRoundEntered(int n)
         if (_resourceView == null || data == null) return;
         if (cur >= 1 && cur <= data.rounds.Count)
             _resourceView.ApplyFrame(data.rounds[cur - 1].resources);
-    }
-
-    // ---------- 昼夜底色（提前平滑过渡） ----------
-    Color _bgColor = new Color(0.55f, 0.74f, 0.87f);
-    static readonly Color DAY_SKY = new Color(0.55f, 0.74f, 0.87f);
-    static readonly Color NIGHT_SKY = new Color(0.05f, 0.08f, 0.16f);
-    const int TRANSITION_Rounds = 10; // 提前10回合开始过渡
-
-    public void LateUpdate()
-    {
-        if (data == null) return;
-        var cam = Camera.main;
-        if (cam != null)
-        {
-            // 计算当天内的位置（0=白天开始, 80=入夜, 130=第二天）
-            int tick = (cur - 1) % 130;
-            float blend; // 0=白天色, 1=夜晚色
-            if (tick < 80 - TRANSITION_Rounds)       blend = 0f;              // 白天
-            else if (tick < 80)                       blend = (tick - (80 - TRANSITION_Rounds)) / (float)TRANSITION_Rounds; // 傍晚过渡
-            else if (tick < 130 - TRANSITION_Rounds)  blend = 1f;              // 夜晚
-            else                                      blend = 1f - (tick - (130 - TRANSITION_Rounds)) / (float)TRANSITION_Rounds; // 黎明过渡
-
-            _bgColor = Color.Lerp(_bgColor, Color.Lerp(DAY_SKY, NIGHT_SKY, blend), Time.deltaTime * 3f);
-            cam.backgroundColor = _bgColor;
-        }
     }
 
     // ---------- 基地摧毁检测 ----------

@@ -69,6 +69,7 @@ public class ReplayCommand
     public bool valid = true;
     public string queryInfo = "";
     public string taskAnswer = "";
+    public string targetName = "";  // buy/sell 目标名（如 UpgradeTowerAttack, copper）
 }
 
 public class ReplayItem

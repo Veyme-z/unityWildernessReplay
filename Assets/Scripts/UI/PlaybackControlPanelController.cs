@@ -127,6 +127,8 @@ public class PlaybackControlPanelController : MonoBehaviour
             if (camABtn != null) camABtn.onClick.AddListener(() => camRig?.SetCameraMode("teamA"));
             var camBBtn = btnBar.Find("CamB")?.GetComponent<Button>();
             if (camBBtn != null) camBBtn.onClick.AddListener(() => camRig?.SetCameraMode("teamB"));
+            var camFreeBtn = btnBar.Find("CamFree")?.GetComponent<Button>();
+            if (camFreeBtn != null) camFreeBtn.onClick.AddListener(() => camRig?.SetCameraMode("free"));
 
             // 智能导播模式按钮
             var manBtn = btnBar.Find("Btn_ModeManual")?.GetComponent<Button>();
@@ -161,17 +163,18 @@ public class PlaybackControlPanelController : MonoBehaviour
         // y=55:  时间轴
         // y=0:   控制按钮
 
-        // ── 双队面板（一条 bar，两队相邻，两行数据） ──
-        var teamBar = Bar(canvasGo.transform, "TeamBar", 0, 118, 700, 68, bg);
+        // ── 双队面板（一条 bar，两队相邻，三行数据） ──
+        var teamBar = Bar(canvasGo.transform, "TeamBar", 0, 108, 700, 88, bg);
         // 红队（左半）— 第一行
         ctrl._redName  = Lbl(teamBar.transform, "RN", "🔴 ---", 14, 8, -6, 160, 22, new Color(0.94f,0.34f,0.28f), f, TextAnchor.MiddleLeft);
         ctrl._redHp    = Lbl(teamBar.transform, "RH", "❤ ---", 13, 8, -28, 80, 20, new Color(0.94f,0.42f,0.38f), f, TextAnchor.MiddleLeft);
         ctrl._redGold  = Lbl(teamBar.transform, "RG", "💰 --- 金币", 13, 100, -28, 120, 20, new Color(0.96f,0.78f,0.22f), f, TextAnchor.MiddleLeft);
         ctrl._redScore = Lbl(teamBar.transform, "RS", "🏆 --- 积分", 13, 230, -28, 120, 20, Color.white, f, TextAnchor.MiddleLeft);
-        // 红队 — 第二行（塔/墙/背包）
-        ctrl._redTower = Lbl(teamBar.transform, "RTw", "🗼 ---", 12, 8, -50, 80, 18, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        ctrl._redWall  = Lbl(teamBar.transform, "RWl", "🧱 ---", 12, 95, -50, 80, 18, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        ctrl._redBag   = Lbl(teamBar.transform, "RBg", "🎒 ---", 12, 182, -50, 170, 18, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
+        // 红队 — 第二行（塔/墙）
+        ctrl._redTower = Lbl(teamBar.transform, "RTw", "🗼 ---", 12, 8, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
+        ctrl._redWall  = Lbl(teamBar.transform, "RWl", "🧱 ---", 12, 100, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
+        // 红队 — 第三行（背包，宽展）
+        ctrl._redBag   = Lbl(teamBar.transform, "RBg", "🎒 ---", 12, 8, -72, 340, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
         // 分隔线
         var div = new GameObject("Div"); div.transform.SetParent(teamBar.transform, false);
         var drt = div.AddComponent<RectTransform>(); drt.anchorMin=new Vector2(0.5f,0.1f); drt.anchorMax=new Vector2(0.5f,0.9f);
@@ -183,9 +186,10 @@ public class PlaybackControlPanelController : MonoBehaviour
         ctrl._blueGold  = Lbl(teamBar.transform, "BG", "💰 --- 金币", 13, 454, -28, 120, 20, new Color(0.96f,0.78f,0.22f), f, TextAnchor.MiddleLeft);
         ctrl._blueScore = Lbl(teamBar.transform, "BS", "🏆 --- 积分", 13, 584, -28, 120, 20, Color.white, f, TextAnchor.MiddleLeft);
         // 蓝队 — 第二行
-        ctrl._blueTower = Lbl(teamBar.transform, "BTw", "🗼 ---", 12, 362, -50, 80, 18, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        ctrl._blueWall  = Lbl(teamBar.transform, "BWl", "🧱 ---", 12, 449, -50, 80, 18, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        ctrl._blueBag   = Lbl(teamBar.transform, "BBg", "🎒 ---", 12, 536, -50, 170, 18, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
+        ctrl._blueTower = Lbl(teamBar.transform, "BTw", "🗼 ---", 12, 362, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
+        ctrl._blueWall  = Lbl(teamBar.transform, "BWl", "🧱 ---", 12, 454, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
+        // 蓝队 — 第三行（背包，宽展）
+        ctrl._blueBag   = Lbl(teamBar.transform, "BBg", "🎒 ---", 12, 362, -72, 340, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
 
         // ── 时间轴 ──
         var tlBar = Bar(canvasGo.transform, "TimelineBar", 0, 55, 0, 50, bg);
@@ -232,8 +236,8 @@ public class PlaybackControlPanelController : MonoBehaviour
         // 镜头按钮：🌐全局  🔴A队  🔵B队
         var camRig = Camera.main != null ? Camera.main.GetComponent<ReplayCameraRig>() : null;
         Color camBtnBg = new Color(0.22f, 0.22f, 0.28f);
-        Btn(btnBar.transform,"CamGlobal","🌐",f,bx,24,24,camBtnBg, ()=>{ camRig?.SetCameraMode("global"); }, 12); bx+=31;
-        Btn(btnBar.transform,"CamA","🔴",f,bx,24,24,camBtnBg, ()=>{ camRig?.SetCameraMode("teamA"); }, 12); bx+=31;
+        Btn(btnBar.transform,"CamGlobal","🌐",f,bx,24,24,camBtnBg, ()=>{ camRig?.SetCameraMode("global"); }, 12); bx+=30;
+        Btn(btnBar.transform,"CamA","🔴",f,bx,24,24,camBtnBg, ()=>{ camRig?.SetCameraMode("teamA"); }, 12); bx+=30;
         Btn(btnBar.transform,"CamB","🔵",f,bx,24,24,camBtnBg, ()=>{ camRig?.SetCameraMode("teamB"); }, 12); bx+=40;
 
         // ── 智能导播模式按钮 ──
@@ -242,7 +246,8 @@ public class PlaybackControlPanelController : MonoBehaviour
         }, 12); bx+=38;
         var autoBtn = Btn(btnBar.transform,"Btn_ModeAuto","🤖A",f,bx,32,24,new Color(0.55f,0.25f,0.2f), ()=>{
             CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Auto);
-        }, 12);
+        }, 12); bx+=38;
+        Btn(btnBar.transform,"CamFree","🆓",f,bx,28,24,camBtnBg, ()=>{ camRig?.SetCameraMode("free"); }, 12); bx+=40;
         ctrl._btnManual = manBtn.btn;
         ctrl._btnAuto = autoBtn.btn;
 
@@ -277,14 +282,18 @@ public class PlaybackControlPanelController : MonoBehaviour
         if (_roundText!=null) _roundText.text=p.cur+" / "+_totalRounds+" 回合";
         int idx=0;
         foreach(var kv in p.engine.teams) {
-            var st=kv.Value; int hp=0, towers=0, walls=0; var bag=new System.Text.StringBuilder();
+            var st=kv.Value; int hp=0, towers=0, walls=0;
+            var agg = new System.Collections.Generic.Dictionary<string, int>();
             foreach(var u in p.engine.units.Values) {
                 if(u.teamId!=st.teamId) continue;
                 if(u.type==4) hp=u.hp;
                 else if(u.type==3) towers++;
                 else if(u.type==5) walls++;
-                if(u.backpacks!=null) foreach(var b in u.backpacks) bag.Append(b.name).Append("x").Append(b.num).Append(" ");
+                if(u.backpacks!=null)
+                    foreach(var b in u.backpacks) { int n; agg.TryGetValue(b.name, out n); agg[b.name]=n+b.num; }
             }
+            var bag=new System.Text.StringBuilder();
+            foreach(var item in agg) bag.Append(item.Key).Append("x").Append(item.Value).Append(" ");
             string bagStr=bag.Length>0?bag.ToString().Trim():"空";
             if(idx==0){ if(_redName!=null)_redName.text="🔴 "+st.teamName; if(_redHp!=null)_redHp.text="❤ "+hp; if(_redGold!=null)_redGold.text="💰 "+st.gold+" 金币"; if(_redScore!=null)_redScore.text="🏆 "+st.score+" 积分"; if(_redTower!=null)_redTower.text="🗼 "+towers+"/3 塔"; if(_redWall!=null)_redWall.text="🧱 "+walls+"/28 墙"; if(_redBag!=null)_redBag.text="🎒 "+bagStr; }
             else      { if(_blueName!=null)_blueName.text="🔵 "+st.teamName; if(_blueHp!=null)_blueHp.text="❤ "+hp; if(_blueGold!=null)_blueGold.text="💰 "+st.gold+" 金币"; if(_blueScore!=null)_blueScore.text="🏆 "+st.score+" 积分"; if(_blueTower!=null)_blueTower.text="🗼 "+towers+"/3 塔"; if(_blueWall!=null)_blueWall.text="🧱 "+walls+"/28 墙"; if(_blueBag!=null)_blueBag.text="🎒 "+bagStr; }

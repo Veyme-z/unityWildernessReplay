@@ -153,6 +153,10 @@ public class ReplayEntry : MonoBehaviour
         // 注入 CameraManager 引用
         camMgr.Init(player);
 
+        // ---- 昼夜控制器（复用已有 "Sun" 方向光，不新建） ----
+        var dncGo = new GameObject("DayNightController");
+        dncGo.AddComponent<DayNightController>();
+
         // ---- 顶部状态面板 ----
         HudController.Create(player);
 
