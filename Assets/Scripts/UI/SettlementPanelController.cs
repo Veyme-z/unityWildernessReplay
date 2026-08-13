@@ -40,6 +40,7 @@ public class SettlementPanelController : MonoBehaviour
             ctrl.Setup(p0Name, p0Result, p0Score, p1Name, p1Result, p1Score, onRestart);
             return ctrl;
         }
+        Debug.LogWarning("[SettlementPanelController] SettlementPanel prefab 缺失，回退到代码创建 UI（请检查场景 PrefabRefs 或 Resources/Prefabs/UI/SettlementPanel）。");
         return CreateFromCode(p0Name, p0Result, p0Score, p1Name, p1Result, p1Score, onRestart);
     }
 

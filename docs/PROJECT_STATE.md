@@ -257,6 +257,7 @@ Create(state, parent)
 | 改血条颜色 | `UnitView.cs` SetHp() 中的 Color 值 | 低 |
 | 改围栏样式 | `SceneBuilder.cs` BuildPerimeterFence() 中的 fenceFbx 路径 | 低 |
 | 调塔尺寸/朝向/后坐力/时间参数 | 打开 `CubeTowers/Tower_Minigun_{Faction}.prefab` 的 `TowerVisualController` Inspector 字段 | 低 |
+| 调塔大小（直接改 Prefab scale） | 改 `CubeTowers/Tower_Minigun_{Faction}.prefab` 根 Transform 的 scale（与 `visualScale` 相乘，默认 1.6） | 低 |
 | 切换塔模型（当前统一 Minigun） | `TowerVisualController.cs` 的 `ResolveTowerType()` / `TURRET_NODES` | 低 |
 | 换塔模型素材 | 生成 ProjectAssets 源塔 + 重跑 `Tools/WildernessReplay/Build Tower Visual Prefabs`（见第五节） | 中 |
 
@@ -287,6 +288,7 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-08-13 | **防御塔 Prefab scale 可控大小**：`TowerVisualController.Setup()` 原先 `localScale = one * visualScale` 会覆盖 Prefab 根 Transform 的 scale，导致直接改 Prefab 缩放无效；改为 `prefabScale × visualScale`，现在改 `CubeTowers/Tower_Minigun_{Faction}.prefab` 根 scale 即可控制塔大小（与角色/机器人一致） |
 | 2026-08-13 | **防御塔统一 Minigun + 阵营配色特效**：`ResolveTowerType()` 固定返回 Minigun，三塔（红/蓝）统一加载 `Tower_Minigun_{Faction}`（删 `SLOT_TYPES`/slot 映射死代码）；Tracer/命中圆环/枪口灯按阵营配色（红 `#FF2D55` / 蓝 `#007AFF`），统一 Minigun 细线 0.07/0.04、0.15s；后坐力改两阶段 `EaseOutCubic`+`Smooth01`；6 个时间参数 `[SerializeField]`（aimHold/kick/recov/light/particle/ring） |
 | 2026-08-13 | **防御塔视觉续作（第 4 阶段）**：6 个可编辑视觉包装 Prefab（`CubeTowers/Tower_{Type}_{Faction}`，序列化字段迁到 Inspector，Setup 不覆盖）；待机 180°；真实枪口 Tracer + 命中闪光；`Tower.prefab` 旧 Visual 停用改 `VisualRoot`；旧通用激光对 type=3 禁用；`Assets/Editor/TowerPrefabBuilder.cs` 一键重建 |
 | 2026-08-13 | **Cube Tower Defense 塔接入 roleType=3**：`TowerVisualController.cs` 接管塔视觉（炮塔转向+程序化后坐力+Muzzle 粒子/闪光、slot id 升序→塔类型、暂停冻结/Seek 复位）；`UnitView.cs` 挂载塔视觉+血条按模型包围盒；`ReplayPlayer.cs` attack 事件传 targetPos + Seek 复位。不修改 Tower.prefab / 第三方源资源 / 伤害与 Replay 状态 |

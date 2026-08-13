@@ -26,7 +26,7 @@ public class TowerVisualController : MonoBehaviour
     };
 
     [Header("视觉摆放（本包装 Prefab 根）")]
-    [Tooltip("整体缩放")]
+    [Tooltip("基础缩放倍率（与 Prefab 根 Transform 的 scale 相乘；可直接改 Prefab 根 scale 控制大小）")]
     public float visualScale = 1.6f;
     [Tooltip("Y 轴偏移")]
     public float yOffset = 0f;
@@ -118,8 +118,11 @@ public class TowerVisualController : MonoBehaviour
         _towerType = ResolveTowerType(view);
         _faction = faction;
 
-        // 本节点就是视觉包装 Prefab 的根，直接应用 Inspector 序列化值
-        transform.localScale = Vector3.one * visualScale;
+        // 本节点就是视觉包装 Prefab 的根。
+        // 尊重用户在 Prefab 根上直接设置的 scale（与角色/机器人一致，可直接编辑 Prefab 缩放控制大小），
+        // visualScale 作为其上的统一基础倍率（默认 1.6 保持原观感）。
+        Vector3 prefabScale = transform.localScale;
+        transform.localScale = Vector3.Scale(prefabScale, new Vector3(visualScale, visualScale, visualScale));
         transform.localPosition = new Vector3(0f, yOffset, 0f);
         transform.localRotation = Quaternion.Euler(0f, forwardYawOffset, 0f);
 

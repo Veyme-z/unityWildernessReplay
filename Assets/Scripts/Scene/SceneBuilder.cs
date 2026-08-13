@@ -54,6 +54,10 @@ public static class SceneBuilder
         {
             for (int z = 0; z < h; z++)
             {
+                // 水域不铺草地，留出凹陷的坑（水面在下方单独生成）
+                int t = map.data[z * w + x];
+                if (t == 2) continue;
+
                 Vector3 pos = new Vector3(x - ox, -0.03f, oz - z);
 
                 // 使用真正的 Grass_Block.prefab
@@ -73,10 +77,6 @@ public static class SceneBuilder
                     var c = tile.GetComponent<Collider>();
                     if (c != null) c.enabled = false;
                 }
-
-                // 水域跳过碎草
-                int t = map.data[z * w + x];
-                if (t == 2) continue;
 
                 // 1/3 概率播撒 1 束碎草，大小减半
                 if (rng.NextDouble() < 0.33f && _grassScatter.Count > 0)
@@ -112,8 +112,7 @@ public static class SceneBuilder
                 Vector3 c = new Vector3(x - ox, 0.01f, oz - y);
 
                 if (t == 2)
-                    AddStandardCube(root, "water_" + x + "_" + y, c, new Vector3(1.03f, 0.24f, 1.03f),
-                            new Color(0.13f, 0.38f, 0.82f));
+                    AddWaterTile(root, "water_" + x + "_" + y, c);
                 else if (t == 8 || t == 9 || t == 10)
                     BuildNeutralNpc(root, t, x, y, c);
                 else if (t == 4 || t == 3 || t == 5 || t == 1)
@@ -131,7 +130,7 @@ public static class SceneBuilder
         var skirtGo = GameObject.CreatePrimitive(PrimitiveType.Plane);
         skirtGo.name = "Extended_Ground_Skirt";
         skirtGo.transform.SetParent(root);
-        skirtGo.transform.position = new Vector3(0, -0.08f, 0);
+        skirtGo.transform.position = new Vector3(0, -0.13f, 0);
         skirtGo.transform.localScale = new Vector3(15f, 1f, 15f);
         var skirtRend = skirtGo.GetComponent<Renderer>();
         var skirtMat = new Material(Shader.Find("Standard"))
@@ -421,6 +420,53 @@ public static class SceneBuilder
         }
         var col = go.GetComponent<Collider>();
         if (col != null) col.enabled = false;
+    }
+
+    /// <summary>
+    /// 水域瓦片：凹陷的池子（深色池底 + 低于草地顶面 0.1 的平整水面）。
+    /// 草地顶面 y=0，水面 y=-0.10，池底 y=-0.12~-0.11；水面用无高光的半透明材质，避免反光/瓦片感。
+    /// </summary>
+    static void AddWaterTile(Transform parent, string name, Vector3 cell)
+    {
+        // 池底：深色薄板，作为水底（顶面 y=-0.11）
+        AddStandardCube(parent, name + "_bed",
+            new Vector3(cell.x, -0.115f, cell.z),
+            new Vector3(1.03f, 0.01f, 1.03f),
+            new Color(0.06f, 0.11f, 0.17f));
+
+        // 水面：平整薄片（Plane 无厚度），低于草地顶面 0.1，形成凹陷
+        var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        go.name = name;
+        go.transform.SetParent(parent);
+        go.transform.position = new Vector3(cell.x, -0.10f, cell.z);
+        go.transform.localScale = new Vector3(0.101f, 1f, 0.101f);
+        var rend = go.GetComponent<Renderer>();
+        if (rend != null)
+        {
+            rend.sharedMaterial = MakeWaterMaterial();
+            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            rend.receiveShadows = false;
+        }
+        var col = go.GetComponent<Collider>();
+        if (col != null) col.enabled = false;
+    }
+
+    static Material MakeWaterMaterial()
+    {
+        var m = new Material(Shader.Find("Standard"));
+        m.SetFloat("_Mode", 3f); // Transparent
+        m.SetOverrideTag("RenderType", "Transparent");
+        m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        m.SetInt("_ZWrite", 0);
+        m.DisableKeyword("_ALPHATEST_ON");
+        m.EnableKeyword("_ALPHABLEND_ON");
+        m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        m.SetColor("_Color", new Color(0.12f, 0.33f, 0.58f, 0.75f));
+        m.SetFloat("_Metallic", 0f);
+        m.SetFloat("_Glossiness", 0f);                          // 无高光
+        m.SetColor("_SpecColor", new Color(0f, 0f, 0f, 1f));    // 镜面黑，消除反光
+        return m;
     }
 
     static Texture2D MakeGrassTex(int w, int h)

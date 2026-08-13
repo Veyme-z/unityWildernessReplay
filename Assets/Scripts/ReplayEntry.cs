@@ -167,6 +167,9 @@ public class ReplayEntry : MonoBehaviour
         // ---- 底部双队面板 + 时间轴 + 播放控制 ----
         PlaybackControlPanelController.Create(player);
 
+        // ---- 右侧任务面板（占位：推理类任务 + 官方消息） ----
+        TaskPanelController.Create(player);
+
         // ---- 固定相机初始视角（ReplayCameraRig 接管后负责平滑运镜）----
         camGo.transform.position = new Vector3(0f, 40f, -8f);
         camGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);

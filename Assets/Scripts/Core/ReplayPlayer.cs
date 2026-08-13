@@ -474,31 +474,40 @@ void OnRoundEntered(int n)
     {
         if (_settlementOverlay != null) return;
 
-        string p0Name, p0Result, p1Name, p1Result;
+        // 红方 = defender，蓝方 = challenger（与 TeamColorApplicator / 底部面板一致）
+        TeamStat red = null, blue = null;
+        foreach (var kv in engine.teams)
+        {
+            if (kv.Value.type == "defender") red = kv.Value;
+            else if (kv.Value.type == "challenger") blue = kv.Value;
+        }
+        if (red == null || blue == null) return;
+
+        string p0Name = "红方", p1Name = "蓝方";
+        string p0Result, p1Result;
         int p0Score, p1Score;
 
+        // 优先取 finish 记录里的结果，按 teamId 对齐（避免列表顺序把红蓝搞反）
         var f = data.finish;
-        if (f != null && f.players != null && f.players.Count >= 2)
+        var resultById = new Dictionary<string, string>();
+        var scoreById = new Dictionary<string, int>();
+        if (f != null && f.players != null)
+            foreach (var pr in f.players)
+            {
+                resultById[pr.teamId] = pr.result;
+                scoreById[pr.teamId] = pr.totalScore;
+            }
+
+        if (resultById.ContainsKey(red.teamId) && resultById.ContainsKey(blue.teamId))
         {
-            p0Name   = f.players[0].teamName;
-            p0Result = f.players[0].result;
-            p0Score  = f.players[0].totalScore;
-            p1Name   = f.players[1].teamName;
-            p1Result = f.players[1].result;
-            p1Score  = f.players[1].totalScore;
+            p0Result = resultById[red.teamId];
+            p1Result = resultById[blue.teamId];
+            p0Score  = scoreById[red.teamId];
+            p1Score  = scoreById[blue.teamId];
         }
         else
         {
             // 无 finish 记录时从引擎状态推断（基地先爆的一方失败）
-            if (engine.teams.Count < 2) return;
-            TeamStat red = null, blue = null;
-            foreach (var kv in engine.teams)
-            {
-                if (kv.Value.type == "challenger") red = kv.Value;
-                else if (kv.Value.type == "defender") blue = kv.Value;
-            }
-            if (red == null || blue == null) return;
-
             int redHp = -1, blueHp = -1;
             foreach (var u in engine.units.Values)
             {
@@ -506,13 +515,10 @@ void OnRoundEntered(int n)
                 if (u.teamId == red.teamId) redHp = u.hp;
                 else if (u.teamId == blue.teamId) blueHp = u.hp;
             }
-
-            p0Name   = red.teamName;
-            p0Score  = red.score;
             p0Result = redHp <= 0 ? "defeat" : (blueHp <= 0 ? "victory" : "draw");
-            p1Name   = blue.teamName;
-            p1Score  = blue.score;
             p1Result = blueHp <= 0 ? "defeat" : (redHp <= 0 ? "victory" : "draw");
+            p0Score  = red.score;
+            p1Score  = blue.score;
         }
 
         var ctrl = SettlementPanelController.Create(

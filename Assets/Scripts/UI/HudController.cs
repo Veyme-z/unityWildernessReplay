@@ -40,6 +40,7 @@ public class HudController : MonoBehaviour
             ctrl._currentPhaseColor = WARM_PHASE;
             return ctrl;
         }
+        Debug.LogWarning("[HudController] HudPanel prefab 缺失，回退到代码创建 UI（请检查场景 PrefabRefs 或 Resources/Prefabs/UI/HudPanel）。");
         return CreateFromCode(player);
     }
 
@@ -94,7 +95,7 @@ public class HudController : MonoBehaviour
         phaseRt.anchoredPosition = new Vector2(148, 0);
         phaseRt.sizeDelta = new Vector2(130, 28);
         var phaseTxt = phaseGo.AddComponent<Text>();
-        phaseTxt.text = "☀ 白天";
+        phaseTxt.text = "白天";
         phaseTxt.font = BuiltinFont();
         phaseTxt.fontSize = 18;
         phaseTxt.alignment = TextAnchor.MiddleLeft;
@@ -156,7 +157,7 @@ public class HudController : MonoBehaviour
             _lastNight = night;
 
             dayLabel.text = "DAY " + day;
-            phaseLabel.text = night ? "🌙 黑夜" : "☀ 白天";
+            phaseLabel.text = night ? "黑夜" : "白天";
             roundLabel.text = "回合 " + (turnInPhase + 1) + " / " + phaseTotal;
 
             // 昼夜色温过渡

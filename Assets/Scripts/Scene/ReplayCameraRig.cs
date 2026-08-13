@@ -39,12 +39,10 @@ public class ReplayCameraRig : MonoBehaviour
     [Range(25f, 45f)] public float freeMaxPitch = 45f;
     public float freeMinDistance = 8f;
     public float freeMaxDistance = 45f;
-    public float freePanSpeed = 3f;
+    public float freePanSpeed = 6f;
     public float freeRotateSpeed = 3f;
     public float freeZoomSpeed = 1.5f;
     public float freeSmoothSpeed = 8f;
-    [Tooltip("平移边界内缩量（世界单位）。越大约靠内，避免看到草地之外的穿帮区域。")]
-    public float freePanMargin = 10f;
 
     // —— 内部状态 ——
     CameraMode _mode = CameraMode.Global;
@@ -61,10 +59,9 @@ public class ReplayCameraRig : MonoBehaviour
     Vector3 _desiredPivot;
     float _desiredYaw, _desiredPitch, _desiredDistance;
 
-    const int MAP_W = 41;
-    const int MAP_H = 32;
-    static readonly Vector3 MAP_MIN = new Vector3(-20f, 0f, -15.5f);
-    static readonly Vector3 MAP_MAX = new Vector3(20f, 0f, 15.5f);
+    // 视野地面矩形允许的最大边界：48×40，居中于地图原点
+    static readonly Vector3 VIS_MIN = new Vector3(-38f, 0f, -20f);
+    static readonly Vector3 VIS_MAX = new Vector3(38f, 0f, 30f);
 
     // ——— 生命周期 ———
     void Awake()
@@ -182,7 +179,6 @@ public class ReplayCameraRig : MonoBehaviour
                 Vector3 forward = Vector3.Cross(right, Vector3.up).normalized;
                 float scale = _desiredDistance * 0.003f * freePanSpeed;
                 _desiredPivot -= (right * dx + forward * dy) * scale;
-                _desiredPivot = ClampPivot(_desiredPivot);
             }
         }
 
@@ -215,11 +211,13 @@ public class ReplayCameraRig : MonoBehaviour
                     Vector3 cursorPoint = mouseRay.GetPoint(groundHit);
                     float ratio = newDist / oldDist;
                     _desiredPivot = cursorPoint + (_desiredPivot - cursorPoint) * ratio;
-                    _desiredPivot = ClampPivot(_desiredPivot);
                 }
                 _desiredDistance = newDist;
             }
         }
+
+        // 可见范围夹紧：保证视野地面矩形不超出 48×40 框
+        ClampVisibleArea();
     }
 
     void UpdateFreeTransform()
@@ -237,13 +235,74 @@ public class ReplayCameraRig : MonoBehaviour
         _desiredRotation = rot;
     }
 
-    Vector3 ClampPivot(Vector3 p)
+    /// <summary>把视野地面矩形夹进 48×40 框：先收缩距离，再平移 pivot，使画面看不到框外。</summary>
+    void ClampVisibleArea()
     {
-        float m = Mathf.Max(0f, freePanMargin);
-        return new Vector3(
-            Mathf.Clamp(p.x, MAP_MIN.x + m, MAP_MAX.x - m),
-            0f,
-            Mathf.Clamp(p.z, MAP_MIN.z + m, MAP_MAX.z - m));
+        if (!TryGetVisibleRect(out Rect r)) return;
+
+        // 1) 视野比框还大（通常发生在缩得太远）→ 收缩距离
+        float bw = VIS_MAX.x - VIS_MIN.x; // 48
+        float bh = VIS_MAX.z - VIS_MIN.z; // 40
+        if (r.width > bw || r.height > bh)
+        {
+            float sx = r.width  <= 0f ? 1f : bw / r.width;
+            float sz = r.height <= 0f ? 1f : bh / r.height;
+            float s = Mathf.Min(sx, sz);
+            _desiredDistance = Mathf.Max(freeMinDistance, _desiredDistance * s);
+            if (!TryGetVisibleRect(out r)) return;
+        }
+
+        // 2) 平移回移，使矩形完全落在框内
+        Vector3 shift = Vector3.zero;
+        if (r.xMin < VIS_MIN.x) shift.x = VIS_MIN.x - r.xMin;
+        else if (r.xMax > VIS_MAX.x) shift.x = VIS_MAX.x - r.xMax;
+        if (r.yMin < VIS_MIN.z) shift.z = VIS_MIN.z - r.yMin;
+        else if (r.yMax > VIS_MAX.z) shift.z = VIS_MAX.z - r.yMax;
+        _desiredPivot += shift;
+    }
+
+    /// <summary>计算当前 desired 位姿下，视野在地面 (y=0) 的外接矩形（x→Rect.x，z→Rect.y）。</summary>
+    bool TryGetVisibleRect(out Rect r)
+    {
+        r = new Rect();
+        var cam = GetComponent<Camera>();
+        if (cam == null) return false;
+
+        Quaternion rot = Quaternion.Euler(_desiredPitch, _desiredYaw, 0f);
+        Vector3 fwd = rot * Vector3.forward;
+        Vector3 right = rot * Vector3.right;
+        Vector3 up = rot * Vector3.up;
+        Vector3 camPos = _desiredPivot - fwd * _desiredDistance;
+
+        float halfH = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float halfW = halfH * cam.aspect;
+
+        // 屏幕四角视线方向（未规范化即可，只影响 t，不影响交点）
+        Vector3[] dirs = new Vector3[4]
+        {
+            fwd + right * halfW + up * halfH,   // 右上
+            fwd - right * halfW + up * halfH,   // 左上
+            fwd + right * halfW - up * halfH,   // 右下
+            fwd - right * halfW - up * halfH,   // 左下
+        };
+
+        float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+        float minZ = float.PositiveInfinity, maxZ = float.NegativeInfinity;
+        bool any = false;
+        foreach (var d in dirs)
+        {
+            if (d.y >= -1e-4f) continue;   // 射线不向下，无法交地面
+            float t = -camPos.y / d.y;
+            if (t < 0f) continue;
+            Vector3 hit = camPos + d * t;
+            minX = Mathf.Min(minX, hit.x); maxX = Mathf.Max(maxX, hit.x);
+            minZ = Mathf.Min(minZ, hit.z); maxZ = Mathf.Max(maxZ, hit.z);
+            any = true;
+        }
+        if (!any) return false;
+
+        r = Rect.MinMaxRect(minX, minZ, maxX, maxZ);
+        return true;
     }
 
     // ==================== Fixed 模式 ====================

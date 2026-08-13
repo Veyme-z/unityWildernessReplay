@@ -40,6 +40,7 @@ public class EventLogPanelController : MonoBehaviour
             if (ctrl == null) ctrl = go.AddComponent<EventLogPanelController>();
             return ctrl;
         }
+        Debug.LogWarning("[EventLogPanelController] EventLogPanel prefab 缺失，回退到代码创建 UI（请检查场景 PrefabRefs 或 Resources/Prefabs/UI/EventLogPanel）。");
         return CreateFromCode(player);
     }
 

@@ -7,8 +7,8 @@ using UnityEngine.UI;
 /// </summary>
 public class PlaybackControlPanelController : MonoBehaviour
 {
-    [SerializeField] Text _redName, _redHp, _redGold, _redScore, _redTower, _redWall, _redBag;
-    [SerializeField] Text _blueName, _blueHp, _blueGold, _blueScore, _blueTower, _blueWall, _blueBag;
+    [SerializeField] Text _redName, _redHp, _redGold, _redScore, _redTower, _redWall, _redMember, _redBag;
+    [SerializeField] Text _blueName, _blueHp, _blueGold, _blueScore, _blueTower, _blueWall, _blueMember, _blueBag;
     [SerializeField] Slider _slider;
     [SerializeField] Text _roundText;
     [SerializeField] Button _playBtn; [SerializeField] Text _playLabel;
@@ -41,10 +41,12 @@ public class PlaybackControlPanelController : MonoBehaviour
             ctrl._player = player;
             ctrl.AddDirectorUI(go.transform);  // 先创建导演模式 UI
             ctrl.WireCallbacks(player);        // 再连线回调
+            ctrl.ResolveTextRefs();           // 按名字解析文本引用（避免序列化引用失效）
             ctrl._totalRounds = player.TotalRounds;
             ctrl.Sync(player);
             return ctrl;
         }
+        Debug.LogWarning("[PlaybackControlPanelController] PlaybackControlPanel prefab 缺失，回退到代码创建 UI（请检查场景 PrefabRefs 或 Resources/Prefabs/UI/PlaybackControlPanel）。");
         ctrl = CreateFromCode(player);
         return ctrl;
     }
@@ -59,10 +61,10 @@ public class PlaybackControlPanelController : MonoBehaviour
 
         // 找到最右侧按钮的位置
         float bx = 200f; // 右侧偏移
-        var manBtn = MakeBtn(btnBar, "Btn_ModeManual", "🎥M", bx, 32, 24,
+        var manBtn = MakeBtn(btnBar, "Btn_ModeManual", "手动", bx, 48, 24,
             new Color(0.3f, 0.55f, 0.3f), f, 12,
             () => CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Manual));
-        var autoBtn = MakeBtn(btnBar, "Btn_ModeAuto", "🤖A", bx + 38, 32, 24,
+        var autoBtn = MakeBtn(btnBar, "Btn_ModeAuto", "自动", bx + 54, 48, 24,
             new Color(0.55f, 0.25f, 0.2f), f, 12,
             () => CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Auto));
         _btnManual = manBtn;
@@ -76,7 +78,7 @@ public class PlaybackControlPanelController : MonoBehaviour
         srt.pivot = new Vector2(0.5f, 1); srt.anchoredPosition = new Vector2(0, -72);
         srt.sizeDelta = new Vector2(320, 28);
         var st = statusGo.AddComponent<Text>();
-        st.text = "● 🎬 智能导演进行中..."; st.font = f; st.fontSize = 16;
+        st.text = "智能导演进行中"; st.font = f; st.fontSize = 16;
         st.alignment = TextAnchor.MiddleCenter; st.color = new Color(1f, 0.25f, 0.2f);
         st.raycastTarget = false;
         statusGo.SetActive(false);
@@ -258,7 +260,7 @@ public class PlaybackControlPanelController : MonoBehaviour
         srt.pivot = new Vector2(0.5f, 1); srt.anchoredPosition = new Vector2(0, -72);
         srt.sizeDelta = new Vector2(320, 28);
         var st = statusGo.AddComponent<Text>();
-        st.text = "● 🎬 智能导演进行中..."; st.font = f; st.fontSize = 16;
+        st.text = "智能导演进行中"; st.font = f; st.fontSize = 16;
         st.alignment = TextAnchor.MiddleCenter; st.color = new Color(1f, 0.25f, 0.2f);
         st.raycastTarget = false;
         statusGo.SetActive(false);
@@ -267,6 +269,28 @@ public class PlaybackControlPanelController : MonoBehaviour
         ctrl._totalRounds = player.TotalRounds;
         ctrl.Sync(player);
         return ctrl;
+    }
+
+    /// <summary>按名字解析文本引用（prefab 与代码创建通用，避免序列化引用失效）</summary>
+    void ResolveTextRefs()
+    {
+        var red  = transform.Find("TeamBar/RedCard");
+        var blue = transform.Find("TeamBar/BlueCard");
+        _redName   = FindText(red,  "RN");  _redHp     = FindText(red,  "RH");
+        _redGold   = FindText(red,  "RG");  _redScore  = FindText(red,  "RS");
+        _redTower  = FindText(red,  "RTw"); _redWall   = FindText(red,  "RWl");
+        _redMember = FindText(red,  "RMm"); _redBag    = FindText(red,  "RBg");
+        _blueName   = FindText(blue, "BN");  _blueHp     = FindText(blue, "BH");
+        _blueGold   = FindText(blue, "BG");  _blueScore  = FindText(blue, "BS");
+        _blueTower  = FindText(blue, "BTw"); _blueWall   = FindText(blue, "BWl");
+        _blueMember = FindText(blue, "BMm"); _blueBag    = FindText(blue, "BBg");
+    }
+
+    static Text FindText(Transform parent, string name)
+    {
+        if (parent == null) return null;
+        var t = parent.Find(name);
+        return t != null ? t.GetComponent<Text>() : null;
     }
 
     void OnDrag(float v) {
@@ -280,26 +304,45 @@ public class PlaybackControlPanelController : MonoBehaviour
         if (_slider!=null&&_slider.maxValue!=_totalRounds) { _slider.minValue=1; _slider.maxValue=_totalRounds; }
         if (_slider!=null) _slider.SetValueWithoutNotify(p.cur);
         if (_roundText!=null) _roundText.text=p.cur+" / "+_totalRounds+" 回合";
-        int idx=0;
+        // 游戏上限（任务书）：围墙≤28、防御塔≤3、每队队员≤3
+        const int MAX_WALL = 28, MAX_TOWER = 3, MAX_MEMBER = 3;
+        Color colRed  = new Color(1f, 0.176f, 0.333f);   // defender = 红方
+        Color colBlue = new Color(0f, 0.478f, 1f);       // challenger = 蓝方
+
         foreach(var kv in p.engine.teams) {
-            var st=kv.Value; int hp=0, towers=0, walls=0;
+            var st=kv.Value; int hp=0, towers=0, walls=0, members=0;
             var agg = new System.Collections.Generic.Dictionary<string, int>();
             foreach(var u in p.engine.units.Values) {
                 if(u.teamId!=st.teamId) continue;
+                if(u.dying||u.dead) continue;
                 if(u.type==4) hp=u.hp;
                 else if(u.type==3) towers++;
                 else if(u.type==5) walls++;
+                else if(u.type==6||u.type==7) members++;
                 if(u.backpacks!=null)
                     foreach(var b in u.backpacks) { int n; agg.TryGetValue(b.name, out n); agg[b.name]=n+b.num; }
             }
             var bag=new System.Text.StringBuilder();
             foreach(var item in agg) bag.Append(item.Key).Append("x").Append(item.Value).Append(" ");
             string bagStr=bag.Length>0?bag.ToString().Trim():"空";
-            if(idx==0){ if(_redName!=null)_redName.text="🔴 "+st.teamName; if(_redHp!=null)_redHp.text="❤ "+hp; if(_redGold!=null)_redGold.text="💰 "+st.gold+" 金币"; if(_redScore!=null)_redScore.text="🏆 "+st.score+" 积分"; if(_redTower!=null)_redTower.text="🗼 "+towers+"/3 塔"; if(_redWall!=null)_redWall.text="🧱 "+walls+"/28 墙"; if(_redBag!=null)_redBag.text="🎒 "+bagStr; }
-            else      { if(_blueName!=null)_blueName.text="🔵 "+st.teamName; if(_blueHp!=null)_blueHp.text="❤ "+hp; if(_blueGold!=null)_blueGold.text="💰 "+st.gold+" 金币"; if(_blueScore!=null)_blueScore.text="🏆 "+st.score+" 积分"; if(_blueTower!=null)_blueTower.text="🗼 "+towers+"/3 塔"; if(_blueWall!=null)_blueWall.text="🧱 "+walls+"/28 墙"; if(_blueBag!=null)_blueBag.text="🎒 "+bagStr; }
-            idx++;
+
+            // 队伍类型→卡片：defender=红方，challenger=蓝方（与 TeamColorApplicator 一致）
+            bool isRed = st.type=="defender";
+            var name=isRed?_redName:_blueName;     var hpT=isRed?_redHp:_blueHp;
+            var goldT=isRed?_redGold:_blueGold;    var scoreT=isRed?_redScore:_blueScore;
+            var wallT=isRed?_redWall:_blueWall;    var towerT=isRed?_redTower:_blueTower;
+            var memberT=isRed?_redMember:_blueMember; var bagT=isRed?_redBag:_blueBag;
+
+            if(name!=null){ name.text=isRed?"红方":"蓝方"; name.color=isRed?colRed:colBlue; }
+            if(hpT!=null) hpT.text="基地 "+hp;
+            if(goldT!=null) goldT.text="金币 "+st.gold;
+            if(scoreT!=null) scoreT.text="积分 "+st.score;
+            if(wallT!=null) wallT.text="围墙 "+walls+"/"+MAX_WALL;
+            if(towerT!=null) towerT.text="防御塔 "+towers+"/"+MAX_TOWER;
+            if(memberT!=null) memberT.text="人数 "+members+"/"+MAX_MEMBER;
+            if(bagT!=null) bagT.text="背包 "+bagStr;
         }
-        if(_playLabel!=null){ _playLabel.text=p.playing?"| |":"▶"; _playBtn.GetComponent<Image>().color=p.playing?new Color(0.96f,0.78f,0.22f):new Color(0,0.478f,1f); }
+        if(_playLabel!=null){ _playLabel.text=p.playing?"暂停":"播放"; _playBtn.GetComponent<Image>().color=p.playing?new Color(0.96f,0.78f,0.22f):new Color(0,0.478f,1f); }
         if(_speed1Btn!=null)_speed1Btn.GetComponent<Image>().color=p.speedIndex==2?new Color(0,0.478f,1f):new Color(0.35f,0.35f,0.40f);
         if(_speed2Btn!=null)_speed2Btn.GetComponent<Image>().color=p.speedIndex==3?new Color(0,0.478f,1f):new Color(0.35f,0.35f,0.40f);
     }
