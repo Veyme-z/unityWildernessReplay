@@ -21,6 +21,7 @@ public class UnitView : MonoBehaviour
     Animator _animator;
     ReplayPlayer _player;
     bool _hasParams = true;
+    TowerVisualController _towerVisual;
 
     // ── 平滑转向 ──
     Vector3 _prevPos;
@@ -203,6 +204,12 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             }
         }
 
+        // 防御塔 (type=3)：替换内部 Visual 为已转换的 Cube Tower Defense 模型
+        if (state.type == 3)
+        {
+            SetupTowerVisual();
+        }
+
         // 队伍颜色染色（仅 Worker/Pioneer，NPC 无 teamType 会自动跳过）
         var tca = GetComponentInChildren<TeamColorApplicator>();
         if (tca != null) { tca.unitView = this; tca.ApplyTeamColor(); }
@@ -222,6 +229,42 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         float targetW = state.type == 4 ? 2f : (state.type >= 6 && state.type <= 9) ? 1.5f : 1f;
         CalibrateBaseScale(targetW);
         SetHp(state.hp, state.maxHp);
+    }
+
+    /// <summary>防御塔 (type=3)：隐藏旧 Visual，改为 Resources 中可编辑的 Cube Tower Defense 视觉包装 Prefab。</summary>
+    void SetupTowerVisual()
+    {
+        bool isDefender = state.teamType == "defender";
+        string faction = isDefender ? "Red" : "Blue";
+
+        // 关闭旧 Visual（旧 KayKit 塔模型），由新塔视觉替代内部视觉
+        var visual = transform.Find("Visual");
+        if (visual != null) visual.gameObject.SetActive(false);
+
+        // 视觉宿主：优先复用 Tower.prefab 中的 VisualRoot，否则运行时创建
+        Transform visualRoot = transform.Find("VisualRoot");
+        if (visualRoot == null)
+        {
+            var vr = new GameObject("VisualRoot");
+            vr.transform.SetParent(transform, false);
+            visualRoot = vr.transform;
+        }
+
+        // 运行时选择 Resources 中的视觉包装 Prefab（以后调尺寸直接改对应 CubeTowers Prefab）
+        string type = TowerVisualController.ResolveTowerType(this);
+        string path = "Prefabs/Buildings/CubeTowers/Tower_" + type + "_" + faction;
+        var prefab = Resources.Load<GameObject>(path);
+        if (prefab == null)
+        {
+            Debug.LogWarning("[UnitView] 未找到防御塔视觉包装 " + path);
+            return;
+        }
+
+        var inst = Object.Instantiate(prefab, visualRoot);
+        inst.name = "TowerVisual_" + type;
+        _towerVisual = inst.GetComponent<TowerVisualController>();
+        if (_towerVisual == null) _towerVisual = inst.AddComponent<TowerVisualController>();
+        _towerVisual.Setup(this, faction);
     }
 
     /// <summary>从 clips 中按优先级匹配第一个包含关键字的动画。</summary>
@@ -270,8 +313,18 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
     void UpgradeHpTo3D()
     {
         var cubeMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
-        float modelH = _body != null ? EstimateHeight(_body.gameObject) : 2f;
-        float modelW = _body != null ? EstimateWidth(_body.gameObject) : 0.5f;
+        float modelH, modelW;
+        if (state.type == 3 && _towerVisual != null && _towerVisual.IsSetup)
+        {
+            // 新塔模型按 Renderer 包围盒调整 HP 条
+            modelH = _towerVisual.VisualHeight();
+            modelW = _towerVisual.VisualWidth();
+        }
+        else
+        {
+            modelH = _body != null ? EstimateHeight(_body.gameObject) : 2f;
+            modelW = _body != null ? EstimateWidth(_body.gameObject) : 0.5f;
+        }
         _hpW = Mathf.Max(modelW, 0.3f);
         // 基地/塔在模型顶部，开拓者 0.65，其余 0.55
         if (state.type == 4) { _hpY = modelH + 2f; _hpW *= 1.6f; }
@@ -406,6 +459,20 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             else _animator.Play("Take Damage");
         }
         catch (System.Exception) { }
+    }
+
+    /// <summary>触发防御塔攻击表现（炮塔转向 + 后坐力 + 枪口特效），目标为世界坐标。</summary>
+    public void TriggerTowerAttack(Vector3 targetWorldPos)
+    {
+        if (_towerVisual != null && _towerVisual.IsSetup)
+            _towerVisual.Fire(targetWorldPos);
+    }
+
+    /// <summary>清除防御塔攻击表现（Seek 跳转后调用）。</summary>
+    public void ResetTowerAttack()
+    {
+        if (_towerVisual != null)
+            _towerVisual.ResetAttack();
     }
 
     /// <summary>触发死亡动画</summary>

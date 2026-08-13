@@ -202,6 +202,18 @@ public static class ReplayParser
                     cmd.x = MiniJson.Int(tp, "x");
                     cmd.y = MiniJson.Int(tp, "y");
                 }
+                var stps = MiniJson.Arr(cd, "skillTargetPos");
+                if (stps != null)
+                    foreach (var sp in stps)
+                    {
+                        var sd = MiniJson.Dict(sp);
+                        if (sd == null) continue;
+                        cmd.skillTargetPos.Add(new ReplayPoint
+                        {
+                            x = MiniJson.Int(sd, "x"),
+                            y = MiniJson.Int(sd, "y")
+                        });
+                    }
                 role.commands.Add(cmd);
             }
         var bp = MiniJson.Arr(d, "backpacks");

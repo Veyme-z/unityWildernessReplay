@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-12
+> **最后更新**：2026-08-13
 
 ---
 
@@ -35,6 +35,7 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | `Scene/TeamColorApplicator.cs` | **阵营标识**：仅控制脚底 SelRing 颜色（已废除全身染色） |
 | `Scene/DayNightController.cs` | **昼夜系统 v2**：四阶段 `LightingProfile` (Day/Dusk/Night/Dawn)，从 `ReplayPlayer.RoundFloat` 连续回合 → `Mathf.Repeat` → 阶段判定 → `LightingProfile.Lerp` 插值 |
 | `Scene/NpcFacingController.cs` | **NPC 转向**：切比雪夫距离来访者检测 + 命令优先级 (executeTask/submitAnswer/sell) + Smooth01 八方向水平旋转；与 FBX/骨骼解耦 |
+| `Scene/TowerVisualController.cs` | **防御塔视觉**（type=3）：炮塔转向 attack 目标 + 两阶段程序化后坐力 + Muzzle 粒子/闪光 + 阵营配色 Tracer/命中圆环；统一 Minigun 塔模型；暂停冻结/Seek 复位 |
 | `Scene/MatLib.cs` | 材质缓存池 + 程序化圆环贴图（Sprites/Default shader） |
 | `Scene/FxFactory.cs` | 气泡/光束特效 |
 | `Scene/Pickable.cs` `Scene/Billboard.cs` | 点击拾取 / 面向相机 |
@@ -73,10 +74,22 @@ Resources/Prefabs/Beasts/
 ```
 Resources/Prefabs/Buildings/
 ├── Base.prefab     # type 4 — 双色 (Model_Red/Blue)
-├── Tower.prefab    # type 3
+├── Tower.prefab    # type 3 — 外层逻辑 prefab（UnitView/碰撞/血条/阵营），内部 Visual 运行时被替换
 ├── Wall.prefab     # type 5
 └── WeaponShop.prefab # type 10 — building_barracks_yellow.fbx
 ```
+
+### 防御塔（Cube Tower Defense，已转 Built-in）
+- **源素材**（URP 专用，勿改）：`Assets/CubeTowerDefense/`
+- **已转换 prefab**（源塔）：`Assets/ProjectAssets/CubeTowerDefense_BuiltIn/Resources/Prefabs/Towers/`
+  ```
+  Tower_Flamethrower_Red/Blue.prefab
+  Tower_Minigun_Red/Blue.prefab
+  Tower_RPG_Red/Blue.prefab
+  ```
+  材质在 `.../Materials/`（Standard）、粒子在 `.../Effects/`（Particles/Standard Unlit）。
+- **视觉包装 Prefab**（运行时真正加载、可编辑）：`Resources/Prefabs/Buildings/CubeTowers/Tower_{Type}_{Faction}.prefab`（6 个），嵌套引用上述源塔（不复制 FBX/贴图），根上挂 `TowerVisualController`。**运行时统一加载 `Tower_Minigun_{Faction}`**（红方 `Tower_Minigun_Red` / 蓝方 `Tower_Minigun_Blue`），Flamethrower/RPG 包装 Prefab 保留但不再加载。旧塔备份在 `Legacy/Tower_Legacy.prefab`。
+- **节点结构**：根 → `BasePillar`(静态底座) + `Minigun`(可旋转炮塔节点)；正前方 = 局部 +Z。Minigun 有 `Muzzle` 节点（内含 8 个 `Particle System` + `Shooting` 粒子），但该节点默认 **禁用**（见「已知大坑」Minigun Muzzle 节点默认禁用）。
 
 ### 环境
 ```
@@ -159,6 +172,16 @@ Create(state, parent)
 - **建筑**：defender→Model_Red 激活，challenger→Model_Blue 激活（红蓝反了：defender 显红）
 - **基地 pivot 偏移**：defender Z=-1.0, challenger Z=-1.92
 
+### 防御塔接入（type=3，第 4 阶段：可编辑视觉包装 Prefab + 目标连线）
+- **视觉包装 Prefab**：`Resources/Prefabs/Buildings/CubeTowers/Tower_{Type}_{Faction}.prefab`（6 个，嵌套引用 ProjectAssets 源塔，不复制 FBX/贴图），每个包装根挂 `TowerVisualController`，序列化字段全部在 Prefab Inspector 配置（`visualScale`/`yOffset`/`forwardYawOffset`/`idleYawOffset=180`/`turnSpeed`/`recoilDistance` + 时间参数 `aimHoldDuration`/`recoilKickDuration`/`recoilRecoverDuration`/`muzzleLightDuration`/`particleDuration`/`hitRingDuration`/`turretPivot`/`muzzleTransform`）。**Setup() 只读取、不覆盖这些值**；运行时统一加载 `Tower_Minigun_{Faction}`。
+- **外层逻辑**：`Tower.prefab` 仍是 UnitView/碰撞体/血条/阵营宿主，旧 `Visual` 已停用，改为空 `VisualRoot` 节点；`SetupTowerVisual()` 运行时 `Resources.Load` 对应包装 Prefab 实例化到 `VisualRoot` 下。旧塔备份在 `Legacy/Tower_Legacy.prefab`。
+- **阵营映射**：defender→`Red`、challenger→`Blue`。
+- **塔类型统一**（`ResolveTowerType(UnitView)`）：固定返回 `"Minigun"`，所有防御塔（红/蓝）都加载 Minigun 塔模型，不再按 slot 区分 Flamethrower/Minigun/RPG。
+- **待机朝向**：`idleYawOffset`（默认 180°）只作用于炮塔节点 Rest Rotation；攻击用世界空间 `LookRotation` 精确指向 targetPos，不受待机偏移影响（不整转 VisualRoot 以免反转攻击方向）。
+- **攻击表现**：仅 `OnCommand` 的 `case "attack"` 触发（`u.view.TriggerTowerAttack(wp)`）。`Fire()` 做炮塔转向 + 两阶段后坐力（`EaseOutCubic` 快速后退 + `Smooth01` 平滑恢复）+ Muzzle 粒子/闪光 + **Tracer**（真实枪口 `MuzzleWorldPosition()` → targetPos，**按阵营配色**红/蓝，统一 Minigun 细线 0.07/0.04、0.15s 淡出）+ 命中闪光圆环（0.40s：淡入 0.05s/保持 0.10s/扩大淡出 0.25s）。旧通用激光对 type==3 在 `OnCommand` 与 `OnDamage` 均已禁用，避免新旧射线重叠。
+- **暂停/Seek**：暂停冻结炮塔/后坐力/粒子/Tracer/命中闪光；Seek（`Step` `!withFx` 分支 + `LateUpdate` 跳变检测）`ResetAttack()` 清空全部并复位到 180°；塔销毁时 `OnDestroy` 清理 Tracer/命中闪光根对象。
+- **血条**：`UpgradeHpTo3D()` 对 type==3 用 `TowerVisualController.VisualHeight()/VisualWidth()`（已排除 ParticleSystemRenderer，否则拖尾撑大包围盒）。
+
 ### 坐标系统
 - `StateEngine.CellToWorld(x,y)` → `(x-20, 0, y-15.5)`
 - `SceneBuilder` 用 `oz - y` 转换 Z（与 StateEngine 同向）
@@ -201,6 +224,14 @@ Create(state, parent)
 
 **注意**：Worker/Pioneer 是 Humanoid + `Adventurer_AnimatorController`，有完整 isMoving/onAttack/onDeath 参数，换同包内其他角色（Barbarian→Knight 等）只需换 FBX + Avatar。
 
+### 更换/调校防御塔（type=3）
+
+**只调尺寸/朝向/后坐力/时间参数，不换塔**：直接打开 `Assets/Resources/Prefabs/Buildings/CubeTowers/Tower_Minigun_{Faction}.prefab`（红/蓝各一，现在只加载这两个），在 `TowerVisualController` Inspector 里改 `visualScale`/`yOffset`/`forwardYawOffset`/`idleYawOffset`(默认180)/`turnSpeed`/`recoilDistance`/`aimHoldDuration`/`recoilKickDuration`/`recoilRecoverDuration`/`muzzleLightDuration`/`particleDuration`/`hitRingDuration`，Play Mode 直接生效，**不需要改 C# 默认值**。
+
+**想恢复三种塔区分（slot 映射）**：把 `TowerVisualController.ResolveTowerType()` 改回按 slot 计算（原来按该队 type==3 id 升序 `%3` → `{"Flamethrower","Minigun","RPG"}`），并在 `TURRET_NODES` 补回 `Flamethrower`=`Flamethrower`、`RPG`=`Rpg` 映射；需确保 `Assets/ProjectAssets/CubeTowerDefense_BuiltIn/Resources/Prefabs/Towers/` 有对应源塔，`CubeTowers/` 有对应视觉包装 Prefab（可重跑菜单 `Tools/WildernessReplay/Build Tower Visual Prefabs`）。
+
+**换整套塔模型素材**（未来换别的塔包）：按第 2 阶段流程生成 ProjectAssets 源塔，再重跑 `Tools/WildernessReplay/Build Tower Visual Prefabs` 生成视觉包装，代码只需确认炮塔节点名 + Muzzle 节点名是否匹配 `TURRET_NODES`。
+
 ### 换模型后必须验证
 
 - [ ] Play Mode 中 Idle 动画正常循环
@@ -225,6 +256,9 @@ Create(state, parent)
 | 加新单位类型 | `UnitView.UNIT_PREFABS` + Prefab | 中 |
 | 改血条颜色 | `UnitView.cs` SetHp() 中的 Color 值 | 低 |
 | 改围栏样式 | `SceneBuilder.cs` BuildPerimeterFence() 中的 fenceFbx 路径 | 低 |
+| 调塔尺寸/朝向/后坐力/时间参数 | 打开 `CubeTowers/Tower_Minigun_{Faction}.prefab` 的 `TowerVisualController` Inspector 字段 | 低 |
+| 切换塔模型（当前统一 Minigun） | `TowerVisualController.cs` 的 `ResolveTowerType()` / `TURRET_NODES` | 低 |
+| 换塔模型素材 | 生成 ProjectAssets 源塔 + 重跑 `Tools/WildernessReplay/Build Tower Visual Prefabs`（见第五节） | 中 |
 
 ---
 
@@ -243,6 +277,9 @@ Create(state, parent)
 | **NPC T-Pose：Animator Controller 缺失** | OfficerNPC/VendorNPC Prefab 的 Animator 虽有有效 Avatar，但 `m_Controller: {fileID: 0}`。Humanoid 模型 + 无 Controller = bind pose（双手张开）。赋 Adventurer_AnimatorController 即可复用 KayKit Idle_A。SCENE BUILDER 静态 NPC 不会走 UnitView.ConfigureFromUnitPrefab，必须在 BuildNeutralNpc 中单独添加组件 |
 | **Robot Controller 零参数** | 所有 Robot 素材包的 `.controller` 都是 `m_AnimatorParameters: []`，纯 ExitTime 链式过渡，外部无法控制。必须用 `AnimatorOverrideController(Skeleton_AnimatorController)` 替换，按名称模糊匹配 Idle/Walk/Attack/Death clip。Boxy/Tanker 缺少 Die 状态，Metal Robot 最完整 | 
 | **Robot Prefab 不在 Resources 下** | `Resources.Load` 无法加载。必须通过 Nested Prefab 引用（拖入 Beast Prefab 内部）或 PrefabRefs 序列化字段。不要用 `AssetDatabase.LoadAssetAtPath`（仅 Editor 可用，Build 失效） |
+| **Minigun 源塔 Muzzle 节点默认禁用** | Cube Tower Defense 源 prefab 里 Minigun 的 `Muzzle` 节点 `activeSelf=false`（原游戏脚本负责开火时激活）。若直接 `Play()` 粒子，`isPlaying` 永远 false。`TowerVisualController.Setup()` 里已先设 `playOnAwake=false` 再 `_muzzlePoint.SetActive(true)` |
+| **ParticleSystemRenderer 撑大包围盒** | 粒子拖尾/射击流会把 `GetComponentsInChildren<Renderer>().bounds` 撑到 9+ 单位，导致血条过宽过高。测模型尺寸必须跳过 `ParticleSystemRenderer`（`TowerVisualController.MeasureSize()` 已处理） |
+| **MainModule 是结构体** | `var m = ps.main; m.playOnAwake = false;` 这种写法有效（MainModule 属性 setter 直写原生对象），但不要对 `ps.main` 整体赋值 |
 
 ---
 
@@ -250,6 +287,9 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-08-13 | **防御塔统一 Minigun + 阵营配色特效**：`ResolveTowerType()` 固定返回 Minigun，三塔（红/蓝）统一加载 `Tower_Minigun_{Faction}`（删 `SLOT_TYPES`/slot 映射死代码）；Tracer/命中圆环/枪口灯按阵营配色（红 `#FF2D55` / 蓝 `#007AFF`），统一 Minigun 细线 0.07/0.04、0.15s；后坐力改两阶段 `EaseOutCubic`+`Smooth01`；6 个时间参数 `[SerializeField]`（aimHold/kick/recov/light/particle/ring） |
+| 2026-08-13 | **防御塔视觉续作（第 4 阶段）**：6 个可编辑视觉包装 Prefab（`CubeTowers/Tower_{Type}_{Faction}`，序列化字段迁到 Inspector，Setup 不覆盖）；待机 180°；真实枪口 Tracer + 命中闪光；`Tower.prefab` 旧 Visual 停用改 `VisualRoot`；旧通用激光对 type=3 禁用；`Assets/Editor/TowerPrefabBuilder.cs` 一键重建 |
+| 2026-08-13 | **Cube Tower Defense 塔接入 roleType=3**：`TowerVisualController.cs` 接管塔视觉（炮塔转向+程序化后坐力+Muzzle 粒子/闪光、slot id 升序→塔类型、暂停冻结/Seek 复位）；`UnitView.cs` 挂载塔视觉+血条按模型包围盒；`ReplayPlayer.cs` attack 事件传 targetPos + Seek 复位。不修改 Tower.prefab / 第三方源资源 / 伤害与 Replay 状态 |
 | 2026-08-11 | 3D 地形完整重构：Grass_Block.prefab + 森林边界 + 围墙 + 碎草散布 |
 | 2026-08-11 | 3D 血条：Cube 替代 Quad，Standard shader，三色变色，自适应高度/宽度 |
 | 2026-08-11 | 矿石系统：物理 .mat 材质(Standard+Metallic)，Y-only 旋转 |

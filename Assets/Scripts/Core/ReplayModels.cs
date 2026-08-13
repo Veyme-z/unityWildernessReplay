@@ -70,6 +70,13 @@ public class ReplayCommand
     public string queryInfo = "";
     public string taskAnswer = "";
     public string targetName = "";  // buy/sell 目标名（如 UpgradeTowerAttack, copper）
+    public List<ReplayPoint> skillTargetPos = new List<ReplayPoint>(); // 范围技能目标格（AoE，如 DizzyWeapon/Bomb 的 3×3）
+}
+
+public class ReplayPoint
+{
+    public int x;
+    public int y;
 }
 
 public class ReplayItem

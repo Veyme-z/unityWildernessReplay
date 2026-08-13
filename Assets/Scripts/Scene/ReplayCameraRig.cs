@@ -18,9 +18,9 @@ public class ReplayCameraRig : MonoBehaviour
 
     // ==================== Global ====================
     [Header("全局视角")]
-    public Vector3 globalPositionOverride = new Vector3(0, 20, -32);
+    public Vector3 globalPositionOverride = new Vector3(0, 28, -40);
     public float globalHeight = 16f;
-    [Range(20f, 80f)] public float globalPitch = 35f;
+    [Range(20f, 80f)] public float globalPitch = 40f;
     [Range(20f, 60f)] public float globalFOV = 35f;
 
     // ==================== Team A / B ====================
@@ -39,10 +39,12 @@ public class ReplayCameraRig : MonoBehaviour
     [Range(25f, 45f)] public float freeMaxPitch = 45f;
     public float freeMinDistance = 8f;
     public float freeMaxDistance = 45f;
-    public float freePanSpeed = 0.6f;
+    public float freePanSpeed = 3f;
     public float freeRotateSpeed = 3f;
     public float freeZoomSpeed = 1.5f;
     public float freeSmoothSpeed = 8f;
+    [Tooltip("平移边界内缩量（世界单位）。越大约靠内，避免看到草地之外的穿帮区域。")]
+    public float freePanMargin = 10f;
 
     // —— 内部状态 ——
     CameraMode _mode = CameraMode.Global;
@@ -237,10 +239,11 @@ public class ReplayCameraRig : MonoBehaviour
 
     Vector3 ClampPivot(Vector3 p)
     {
+        float m = Mathf.Max(0f, freePanMargin);
         return new Vector3(
-            Mathf.Clamp(p.x, MAP_MIN.x, MAP_MAX.x),
+            Mathf.Clamp(p.x, MAP_MIN.x + m, MAP_MAX.x - m),
             0f,
-            Mathf.Clamp(p.z, MAP_MIN.z, MAP_MAX.z));
+            Mathf.Clamp(p.z, MAP_MIN.z + m, MAP_MAX.z - m));
     }
 
     // ==================== Fixed 模式 ====================

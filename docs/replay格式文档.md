@@ -2,13 +2,14 @@
 
 ## 概述
 
-回放文件为 **JSONL** 格式（每行一个独立的 JSON 对象），用于记录对局的完整回放数据。包含 3 种类型的事件记录：
+回放文件为 **JSONL** 格式（每行一个独立的 JSON 对象），用于记录对局的完整回放数据。包含 4 种类型的事件记录：
 
 | 类型 `type` | 说明                             | 出现位置              |
 | ----------- | -------------------------------- | --------------------- |
 | `"start"`   | 游戏开局信息，定义地图和初始角色 | 第 1 行（仅 1 行）    |
 | `"round"`   | 每回合快照数据                   | 第 2 ~ N-1 行（多条） |
-| `"finish"`  | 游戏结束结算                     | 最后 1 行             |
+| `"finish"`  | 游戏结束结算                     | 倒数第 2 行           |
+| `"valid"` / `"invalid"` | 对局有效性标记（纯文本行，非 JSON） | 最后 1 行（仅 1 行） |
 
 ---
 
@@ -273,14 +274,15 @@
 
 ### 2.8 `commands` 动作指令
 
-| 字段             | 类型      | 说明                                  |
-| ---------------- | --------- | ------------------------------------- |
-| `action`         | `string`  | 动作类型，见下表                      |
-| `targetPos`      | `object`  | 目标坐标 `{"x": number, "y": number}` |
-| `skillTargetPos` | `array`   | 技能目标位置（通常为空数组）          |
-| `taskAnswer`     | `string`  | 任务回答内容（提交答案时携带）        |
-| `valid`          | `boolean` | 本次动作是否有效                      |
-| `queryInfo`      | `string`  | 查询/交互信息                         |
+| 字段             | 类型      | 说明                                    |
+| ---------------- | --------- | --------------------------------------- |
+| `action`         | `string`  | 动作类型，见下表                        |
+| `targetName`     | `string`  | 物品类型，详见2.9章武器商店购买内容清单 |
+| `targetPos`      | `object`  | 目标坐标 `{"x": number, "y": number}`   |
+| `skillTargetPos` | `array`   | 技能目标位置（通常为空数组）            |
+| `taskAnswer`     | `string`  | 任务回答内容（提交答案时携带）          |
+| `valid`          | `boolean` | 本次动作是否有效                        |
+| `queryInfo`      | `string`  | 查询/交互信息                           |
 
 #### 动作类型
 
@@ -304,7 +306,10 @@
 
 ### 2.10 `round` 完整 JSON 样例
 
-注：1个id理论上只能出现一次，这里写了多次是为了举例不同action下的格式
+注：
+
+- 1个id理论上只能出现一次，这里写了多次是为了举例不同action下的格式
+- 2.8章`commands` 动作指令的所有字段都会出现在replay.txt中，没用到的key只会传key，不会传value
 
 ```json
 {
@@ -378,7 +383,7 @@
           "commands": [
             {
               "action": "buy",
-              "name": "UpgradeTowerAttack/UpgradeTowerMaxHp/UpgradeWallMaxHp/UpgradeStationMaxHp/FlameBreath/FrostPotion/ThornAmulet/IronWhistle",
+              "targetName": "UpgradeTowerAttack/UpgradeTowerMaxHp/UpgradeWallMaxHp/UpgradeStationMaxHp/FlameBreath/FrostPotion/ThornAmulet/IronWhistle",
               "valid": true
             }
           ],
@@ -396,7 +401,7 @@
           "commands": [
             {
               "action": "use",
-              "name": "Medicine/SmallBeastSummonOrder/AcientTablet",
+              "targetName": "Medicine/SmallBeastSummonOrder/AcientTablet",
               "valid": true
             }
           ],
@@ -414,11 +419,67 @@
           "commands": [
             {
               "action": "use",
-              "name": "WallFixer/DizzyWeapon/Bomb",
+              "targetName": "WallFixer",
               "targetPos": {
                 "x": 29,
                 "y": 7
               },
+              "valid": true
+            }
+          ],
+          "taskPlayer": false,
+          "backpacks": []
+        },
+        {
+          "id": 10011,
+          "pos": {"x": 34, "y": 29},
+          "roleType": 7,
+          "health": 200,
+          "attackPower": 0,
+          "inControl": false,
+          "talk": null,
+          "commands": [
+            {
+              "action": "use",
+              "targetName": "/DizzyWeapon/Bomb",
+              "skillTargetPos": [
+                  {
+                    "x": 29,
+                    "y": 7
+                  },
+                  {
+                    "x": 30,
+                    "y": 7
+                  },
+                  {
+                    "x": 31,
+                    "y": 7
+                  },
+                  {
+                    "x": 29,
+                    "y": 8
+                  },
+                  {
+                    "x": 30,
+                    "y": 8
+                  },
+                  {
+                    "x": 31,
+                    "y": 8
+                  },
+                  {
+                    "x": 29,
+                    "y": 9
+                  },
+                  {
+                    "x": 30,
+                    "y": 9
+                  },
+                  {
+                    "x": 31,
+                    "y": 9
+                  },
+              ],
               "valid": true
             }
           ],
@@ -436,7 +497,7 @@
           "commands": [
             {
               "action": "sell",
-              "name": "stone/iron/copper",
+              "targetName": "stone/iron/copper",
               "valid": true
             }
           ],
@@ -454,7 +515,7 @@
           "commands": [
             {
               "action": "build",
-              "name": "wall",
+              "targetName": "wall",
               "valid": true
             }
           ],
@@ -630,7 +691,31 @@
 
 ---
 
-## 四、数据整体结构示意
+## 四、类型 `valid` / `invalid`
+
+### 4.1 概述
+
+该行为**纯文本行（非 JSON）**，固定为 `valid` 或 `invalid` 单字，作为 replay 文件的最后一行，标识本场对局是否有效。
+
+### 4.2 生成逻辑
+
+当对局因异常（如 SQL 评测服务不可用等）导致无效时，判题器输出 `invalid`；正常结束输出 `valid`。对应代码 `ReplayGenerator.valid(boolean)`。
+
+### 4.3 示例
+
+```
+valid
+```
+
+或
+
+```
+invalid
+```
+
+---
+
+## 五、数据整体结构示意
 
 ```
 第 1 行:   {"type":"start", ...}       ← 游戏开始 + 地图 + 初始角色
@@ -644,7 +729,7 @@
 
 ---
 
-## 五、补充说明
+## 六、补充说明
 
 - **坐标**：`x` 为列（左→右），`y` 为行（上→下），`(0,0)` 为左上角
 - **资源**：`石头`、`铁`、`铜`

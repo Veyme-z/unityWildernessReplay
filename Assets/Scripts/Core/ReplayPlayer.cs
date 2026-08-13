@@ -120,6 +120,11 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
                 u.dead = true;
                 engine.units.Remove(id);
             }
+
+            // Seek 跳转：清除防御塔残留的攻击表现（炮塔转向/后坐力/粒子）
+            foreach (var u in engine.units.Values)
+                if (u.view != null && u.type == 3)
+                    u.view.ResetTowerAttack();
         }
 
         // 为新建/复活单位补建视图
@@ -211,7 +216,9 @@ void OnRoundEntered(int n)
         Log("damage", msg, to.teamType);
         if (from != null)
         {
-            FxFactory.Beam(from.pos, to.pos, from.IsBeast ? new Color(0.79f, 0.54f, 1f) : new Color(1f, 0.62f, 0.36f));
+            // 通用射线：防御塔(type=3)用 Tracer、野兽(11~14)只保留攻击动画，均不生成通用 Beam
+            if (from.type != 3 && !from.IsBeast)
+                FxFactory.Beam(from.pos, to.pos, new Color(1f, 0.62f, 0.36f));
             if (from.view != null && from.IsBeast) from.view.TriggerAttack();
         }
     }
@@ -244,7 +251,11 @@ void OnRoundEntered(int n)
         {
             case "attack":
                 Log("damage", u.DisplayName + " 攻击 " + pos, tt);
-                FxFactory.Beam(u.pos, wp, new Color(1f, 0.62f, 0.36f));
+                // 通用射线：防御塔(type=3)用 Tracer、野兽(11~14)只保留攻击动画，均不生成通用 Beam
+                if (u.type != 3 && !u.IsBeast)
+                    FxFactory.Beam(u.pos, wp, new Color(1f, 0.62f, 0.36f));
+                // 防御塔攻击表现：炮塔面向攻击目标 + 目标连线（仅真实 Replay attack 事件触发）
+                if (u.view != null && u.type == 3) u.view.TriggerTowerAttack(wp);
                 break;
             case "build":
                 Log("build", u.DisplayName + " 建造 " + pos, tt);
@@ -270,8 +281,19 @@ void OnRoundEntered(int n)
                 Log("task", u.DisplayName + " 提交答案", tt);
                 break;
             case "use":
-                Log("cmd", u.DisplayName + " 使用物品", tt);
-                break;
+                {
+                    string item = string.IsNullOrEmpty(c.targetName) ? "物品" : c.targetName;
+                    string msg = u.DisplayName + " 使用 " + item;
+                    if (c.skillTargetPos != null && c.skillTargetPos.Count > 0)
+                    {
+                        msg += "（范围 " + c.skillTargetPos.Count + " 格）";
+                        OnSkillAreaEffect(u, c);
+                    }
+                    else if (c.hasTarget)
+                        msg += " → " + pos;
+                    Log("cmd", msg, tt);
+                    break;
+                }
             case "detect":
                 Log("cmd", u.DisplayName + " 探测 " + pos, tt);
                 break;
@@ -280,6 +302,12 @@ void OnRoundEntered(int n)
                 break;
         }
     }
+
+    /// <summary>
+    /// 范围技能(AoE)即时视觉特效预留接口。
+    /// TODO：未来在此实现 DizzyWeapon/Bomb 的范围表现（爆炸圈/眩晕覆盖区等），当前留空。
+    /// </summary>
+    void OnSkillAreaEffect(UnitState u, ReplayCommand c) { }
 
     public void OnTalk(UnitState u, string text)
     {
