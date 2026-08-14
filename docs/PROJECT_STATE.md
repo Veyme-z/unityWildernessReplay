@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-13
+> **最后更新**：2026-08-14
 
 ---
 
@@ -281,6 +281,7 @@ Create(state, parent)
 | **Minigun 源塔 Muzzle 节点默认禁用** | Cube Tower Defense 源 prefab 里 Minigun 的 `Muzzle` 节点 `activeSelf=false`（原游戏脚本负责开火时激活）。若直接 `Play()` 粒子，`isPlaying` 永远 false。`TowerVisualController.Setup()` 里已先设 `playOnAwake=false` 再 `_muzzlePoint.SetActive(true)` |
 | **ParticleSystemRenderer 撑大包围盒** | 粒子拖尾/射击流会把 `GetComponentsInChildren<Renderer>().bounds` 撑到 9+ 单位，导致血条过宽过高。测模型尺寸必须跳过 `ParticleSystemRenderer`（`TowerVisualController.MeasureSize()` 已处理） |
 | **MainModule 是结构体** | `var m = ps.main; m.playOnAwake = false;` 这种写法有效（MainModule 属性 setter 直写原生对象），但不要对 `ps.main` 整体赋值 |
+| **legacy TextMesh + Dynamic 字体在 WebGL 隐形** | 世界空间 `TextMesh`（3D 文本，非 uGUI `Text`）赋 Dynamic 字体（NotoSansSC）后在 WebGL 两个坑：① 不主动请求字形 → **中文空白**（需 `font.RequestCharactersInTexture(text, fontSize, style)`）；② 不自动把 `MeshRenderer.sharedMaterial` 同步成 `font.material` → **整个文本隐形，连数字/英文都不显示**（需 `mr.sharedMaterial = font.material`）。uGUI `Text` 无此问题（内部订阅 `textureRebuilt`）。见 `UiFonts.PrewarmWorldText()` / `TradeBadge.SetText` |
 
 ---
 
@@ -288,6 +289,7 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-08-14 | **中文字体体系 + WebGL 修复**：新增 `UiFonts`（NotoSansSC 统一入口，uGUI Text/TextMesh 共用，Dynamic）；WebGL 下 replay 用 `UnityWebRequest` 读 StreamingAssets（不用 File API）；TradeBadge 隐形根因修复（`RequestCharactersInTexture` 预热 + `MeshRenderer.sharedMaterial = font.material` 材质同步）；物品名中文映射扩展（铜/铁/石/药品/炸弹/眩晕武器/召唤令/耐久强化…） |
 | 2026-08-13 | **防御塔 Prefab scale 可控大小**：`TowerVisualController.Setup()` 原先 `localScale = one * visualScale` 会覆盖 Prefab 根 Transform 的 scale，导致直接改 Prefab 缩放无效；改为 `prefabScale × visualScale`，现在改 `CubeTowers/Tower_Minigun_{Faction}.prefab` 根 scale 即可控制塔大小（与角色/机器人一致） |
 | 2026-08-13 | **防御塔统一 Minigun + 阵营配色特效**：`ResolveTowerType()` 固定返回 Minigun，三塔（红/蓝）统一加载 `Tower_Minigun_{Faction}`（删 `SLOT_TYPES`/slot 映射死代码）；Tracer/命中圆环/枪口灯按阵营配色（红 `#FF2D55` / 蓝 `#007AFF`），统一 Minigun 细线 0.07/0.04、0.15s；后坐力改两阶段 `EaseOutCubic`+`Smooth01`；6 个时间参数 `[SerializeField]`（aimHold/kick/recov/light/particle/ring） |
 | 2026-08-13 | **防御塔视觉续作（第 4 阶段）**：6 个可编辑视觉包装 Prefab（`CubeTowers/Tower_{Type}_{Faction}`，序列化字段迁到 Inspector，Setup 不覆盖）；待机 180°；真实枪口 Tracer + 命中闪光；`Tower.prefab` 旧 Visual 停用改 `VisualRoot`；旧通用激光对 type=3 禁用；`Assets/Editor/TowerPrefabBuilder.cs` 一键重建 |

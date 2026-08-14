@@ -85,6 +85,8 @@ public static class FxFactory
         tm.anchor = TextAnchor.MiddleCenter;
         tm.alignment = TextAlignment.Center;
         tm.color = Color.white;
+        // WebGL: legacy TextMesh 不会主动为动态字体请求 CJK 字形，显式请求
+        tm.font.RequestCharactersInTexture(text, tm.fontSize, tm.fontStyle);
         txt.AddComponent<Billboard>();
 
         var f = go.AddComponent<FadeScale>();

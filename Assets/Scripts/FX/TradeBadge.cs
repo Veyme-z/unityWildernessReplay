@@ -19,6 +19,18 @@ public class TradeBadge : MonoBehaviour
             case "copper": return "铜";
             case "iron":   return "铁";
             case "stone":  return "石";
+            case "medicine": return "药品";
+            case "bomb": return "炸弹";
+            case "dizzyweapon": return "眩晕武器";
+            case "wallfixer": return "围墙修复器";
+            case "smallbeastsummonorder": return "小型野兽召唤令";
+            case "middlebeastsummonorder": return "中型野兽召唤令";
+            case "largebeastsummonorder": return "大型野兽召唤令";
+            case "bossbeastsummonorder": return "首领野兽召唤令";
+            case "upgradestationmaxhp": return "基地耐久强化";
+            case "upgradewallmaxhp": return "围墙耐久强化";
+            case "upgradetowermaxhp": return "防御塔耐久强化";
+            case "upgradetowerattack": return "防御塔攻击强化";
             default:       return en;
         }
     }
@@ -99,12 +111,38 @@ public class TradeBadge : MonoBehaviour
         }
         else
         {
-            _tm.text = "购买 " + itemName;
+            _tm.text = "购买 " + CnName(itemName);
+        }
+
+        Debug.Log("[TradeBadge] SetText: " + _tm.text);
+
+        // WebGL: legacy TextMesh 赋值 Dynamic 字体后，材质贴图可能丢失导致隐形，
+        // 显式请求字形并同步 MeshRenderer 的材质
+        if (_tm.font != null)
+        {
+            _tm.font.RequestCharactersInTexture(_tm.text, _tm.fontSize, _tm.fontStyle);
+            var mr = _tm.GetComponent<MeshRenderer>();
+            if (mr != null)
+                mr.sharedMaterial = _tm.font.material;
         }
 
         if (_bgTransform != null)
         {
-            float w = Mathf.Max(0.6f, _tm.text.Length * 0.15f + 0.8f) * bgScale;
+            // 区分全宽/半宽：中文是全宽，空格/ASCII/数字是半宽（约一半宽）。
+            // 之前用 len*charWidth 把半宽也当全宽，贩卖文字里 4 个半宽被多算导致偏长。
+            float full = 0f, half = 0f;
+            if (!string.IsNullOrEmpty(_tm.text))
+            {
+                foreach (char c in _tm.text)
+                {
+                    if (c > 0x7F) full++;   // 非 ASCII（中文等）= 全宽
+                    else half++;            // ASCII（空格/字母/数字）= 半宽
+                }
+            }
+            float charWidth = 0.35f;   // 全宽字符的世界宽度，可按实际字号微调
+            float padding = 0.3f;      // 左右总留白
+            float minWidth = 0.6f;
+            float w = Mathf.Max(minWidth, full * charWidth + half * charWidth * 0.5f + padding) * bgScale;
             float h = 0.3f * bgScale;
             _bgTransform.localScale = new Vector3(w, h, 1f);
         }

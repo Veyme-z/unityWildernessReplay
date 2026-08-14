@@ -27,6 +27,10 @@ public static class UiFonts
                 _font = Resources.GetBuiltinResource<Font>("Arial.ttf");
 #endif
             }
+            else
+            {
+                PrewarmWorldText(_font);
+            }
         }
         return _font;
     }
@@ -38,5 +42,18 @@ public static class UiFonts
         Font f = Get();
         foreach (var t in root.GetComponentsInChildren<Text>(true))
             t.font = f;
+    }
+
+    /// <summary>
+    /// legacy TextMesh（3D 世界文字）在 WebGL 上不会主动为动态字体请求 CJK 字形，中文会空白。
+    /// 这里把世界空间文字（交易徽标/气泡）用到的固定字符按实际字号预热进动态图集。
+    /// </summary>
+    static void PrewarmWorldText(Font font)
+    {
+        // 覆盖所有 legacy TextMesh 的实际字号：交易徽标 60/72、气泡 110、矿点 100、伤害数字 180
+        const string chars = "贩卖了购买铜铁石药品炸弹眩晕武器围墙修复器召唤令耐久强化攻击小型中型大型首领 x-0123456789";
+        int[] sizes = { 60, 72, 100, 110, 180 };
+        foreach (int s in sizes)
+            font.RequestCharactersInTexture(chars, s, FontStyle.Normal);
     }
 }
