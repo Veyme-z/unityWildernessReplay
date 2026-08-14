@@ -21,11 +21,7 @@ public class PlaybackControlPanelController : MonoBehaviour
 
     static Font Fn()
     {
-#if UNITY_2022_1_OR_NEWER
-        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-#else
-        return Resources.GetBuiltinResource<Font>("Arial.ttf");
-#endif
+        return UiFonts.Get();
     }
 
     public static PlaybackControlPanelController Create(ReplayPlayer player)
@@ -36,6 +32,7 @@ public class PlaybackControlPanelController : MonoBehaviour
         if (prefab != null)
         {
             var go = Object.Instantiate(prefab);
+            UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
             ctrl = go.GetComponentInChildren<PlaybackControlPanelController>();
             if (ctrl == null) ctrl = go.AddComponent<PlaybackControlPanelController>();
             ctrl._player = player;

@@ -23,11 +23,7 @@ public class TaskPanelController : MonoBehaviour
 
     static Font BuiltinFont()
     {
-#if UNITY_2022_1_OR_NEWER
-        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-#else
-        return Resources.GetBuiltinResource<Font>("Arial.ttf");
-#endif
+        return UiFonts.Get();
     }
 
     public static TaskPanelController Create(ReplayPlayer player)

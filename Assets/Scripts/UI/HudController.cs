@@ -33,6 +33,7 @@ public class HudController : MonoBehaviour
         if (prefab != null)
         {
             var go = Object.Instantiate(prefab);
+            UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
             var ctrl = go.GetComponentInChildren<HudController>();
             if (ctrl == null) ctrl = go.AddComponent<HudController>();
             ctrl._player = player;
@@ -131,11 +132,7 @@ public class HudController : MonoBehaviour
 
     static Font BuiltinFont()
     {
-#if UNITY_2022_1_OR_NEWER
-        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-#else
-        return Resources.GetBuiltinResource<Font>("Arial.ttf");
-#endif
+        return UiFonts.Get();
     }
 
     void Update()

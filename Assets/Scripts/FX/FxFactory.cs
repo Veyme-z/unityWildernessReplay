@@ -3,19 +3,9 @@ using UnityEngine;
 /// <summary>世界空间特效：伤害数字 / 攻击弹道 / 出生光环 / 说话气泡</summary>
 public static class FxFactory
 {
-    static Font _font;
-
     public static Font BuiltinFont()
     {
-        if (_font == null)
-        {
-#if UNITY_2022_1_OR_NEWER
-            _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-#else
-            _font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-#endif
-        }
-        return _font;
+        return UiFonts.Get();
     }
 
     /// <summary>伤害数字：上浮 + 淡出</summary>

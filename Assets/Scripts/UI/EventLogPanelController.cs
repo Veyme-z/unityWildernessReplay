@@ -22,11 +22,7 @@ public class EventLogPanelController : MonoBehaviour
 
     static Font BuiltinFont()
     {
-#if UNITY_2022_1_OR_NEWER
-        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-#else
-        return Resources.GetBuiltinResource<Font>("Arial.ttf");
-#endif
+        return UiFonts.Get();
     }
 
     public static EventLogPanelController Create(ReplayPlayer player)
@@ -36,6 +32,7 @@ public class EventLogPanelController : MonoBehaviour
         if (prefab != null)
         {
             var go = Object.Instantiate(prefab);
+            UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
             var ctrl = go.GetComponentInChildren<EventLogPanelController>();
             if (ctrl == null) ctrl = go.AddComponent<EventLogPanelController>();
             return ctrl;

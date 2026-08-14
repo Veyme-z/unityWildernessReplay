@@ -197,7 +197,8 @@ void OnRoundEntered(int n)
     }
 
     // ---------- IReplayHost ----------
-    static string TeamTag(string teamType) => teamType == "challenger" ? "<color=#F05638>红方</color>" : "<color=#479EF0>蓝方</color>";
+    // defender=红方 / challenger=蓝方（与 TeamColorApplicator、基地 Model_Red/Blue、底部面板一致）
+    static string TeamTag(string teamType) => teamType == "defender" ? "<color=#F05638>红方</color>" : "<color=#479EF0>蓝方</color>";
 
     public void Log(string type, string text) { Log(type, text, ""); }
     public void Log(string type, string text, string teamType)

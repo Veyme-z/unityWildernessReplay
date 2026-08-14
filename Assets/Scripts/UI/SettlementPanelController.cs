@@ -35,6 +35,7 @@ public class SettlementPanelController : MonoBehaviour
         if (prefab != null)
         {
             var go = Object.Instantiate(prefab);
+            UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
             var ctrl = go.GetComponentInChildren<SettlementPanelController>();
             if (ctrl == null) ctrl = go.AddComponent<SettlementPanelController>();
             ctrl.Setup(p0Name, p0Result, p0Score, p1Name, p1Result, p1Score, onRestart);
@@ -142,10 +143,6 @@ public class SettlementPanelController : MonoBehaviour
 
     static Font BuiltinFont()
     {
-#if UNITY_2022_1_OR_NEWER
-        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-#else
-        return Resources.GetBuiltinResource<Font>("Arial.ttf");
-#endif
+        return UiFonts.Get();
     }
 }

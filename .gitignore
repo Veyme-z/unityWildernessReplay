@@ -1,19 +1,35 @@
-# Unity generated
-/[Ll]ibrary/
-/[Tt]emp/
-/[Oo]bj/
-/[Bb]uild/
-/[Bb]uilds/
-/[Ll]ogs/
-/[Uu]ser[Ss]ettings/
-/[Mm]emoryCaptures/
+# --- Unity Generated Directories ---
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+[Ss]creenshots/
+Assets/Screenshots/
+/[Aa]utobuild/
+/[Uu]nityCloudBuild/
+ShaderCache/
+/[Ll]ook/
+/[Aa]ssetStoreTools/
+/Library/MCPForUnity/
 
-# Asset meta files should not be ignored
+# --- Asset Meta Files ---
+# (Unity requires .meta files to track assets, but we ignore local user-specific generated files if any)
 !.gitkeep
 
-# Visual Studio / Rider
+# --- Packages Caches (DO NOT ignore manifest.json & packages-lock.json) ---
+/Packages/cache/
+/Packages/Library/
+/Packages/Temp/
+
+# --- IDEs & Editors (VS, Rider, VSCode) ---
 .idea/
 .vs/
+.vscode/
 *.csproj
 *.sln
 *.unityproj
@@ -25,8 +41,9 @@
 *.mdb
 *.opendb
 *.VC.db
+*.sln.DotSettings.user
 
-# OS generated
+# --- OS Generated ---
 .DS_Store
 .DS_Store?
 ._*
@@ -36,48 +53,11 @@ ehthumbs.db
 Thumbs.db
 Desktop.ini
 
-# Package Manager
-/[Pp]ackages/
-/packages/
-
-# Crash reports
+# --- Crash Reports ---
 Crashlytics/
 CrashReport.*
 
-# Autobuild
-/Autobuild/
-
-# Unity Cloud Build
-/UnityCloudBuild/
-
-# ProjectSettings/EditorBuildSettings.asset is important, don't ignore
-# But we should ignore some generated settings
-/[Pp]rojectSettings/ProjectVersion.txt
-
-# Shader cache
-ShaderCache/
-
-# Recordings
-/[Rr]ecordings/
-
-# Screenshots
-/[Ss]creenshots/
-Assets/Screenshots/
-
-# LOOK
-/LOOK/
-
-# Asset Store Tools
-/AssetStoreTools/
-
-# JetBrains Rider
-.idea/
-*.sln.DotSettings.user
-
-# MCP For Unity runtime state
-/Library/MCPForUnity/
-
-# Build output
+# --- Build Outputs ---
 *.exe
 *.exe.meta
 *.apk

@@ -2,6 +2,7 @@ using System.Collections;
 using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Networking;
 
 /// <summary>
 /// 入口：启动时按优先级加载 replay 文件并组装播放器/UI/相机。
@@ -59,7 +60,47 @@ public class ReplayEntry : MonoBehaviour
             text = debugReplay.text;
             srcName = "debugReplay";
         }
-        else
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // WebGL：File API 不可用，改用 UnityWebRequest 从 StreamingAssets 拉取。
+        if (text == null)
+        {
+            string url = Application.streamingAssetsPath + "/replay.txt";
+            using (var req = UnityWebRequest.Get(url))
+            {
+                yield return req.SendWebRequest();
+                if (req.result == UnityWebRequest.Result.Success && !string.IsNullOrEmpty(req.downloadHandler.text))
+                {
+                    text = req.downloadHandler.text;
+                    srcName = "replay.txt";
+                }
+                else
+                {
+                    Debug.LogError("[ReplayEntry] WebGL 读取 replay.txt 失败: " + url + " error=" + req.error);
+                }
+            }
+        }
+
+        if (text == null)
+        {
+            string url = Application.streamingAssetsPath + "/demo_replay.jsonl";
+            using (var req = UnityWebRequest.Get(url))
+            {
+                yield return req.SendWebRequest();
+                if (req.result == UnityWebRequest.Result.Success && !string.IsNullOrEmpty(req.downloadHandler.text))
+                {
+                    text = req.downloadHandler.text;
+                    srcName = "demo_replay.jsonl";
+                }
+                else
+                {
+                    Debug.LogError("[ReplayEntry] WebGL 读取 demo_replay.jsonl 失败: " + url + " error=" + req.error);
+                }
+            }
+        }
+#else
+        // 编辑器 / Standalone：保持原样。
+        if (text == null)
         {
             // 真实数据优先：persistentDataPath/replay.jsonl
             string p = Path.Combine(Application.persistentDataPath, "replay.jsonl");
@@ -89,6 +130,7 @@ public class ReplayEntry : MonoBehaviour
                 srcName = "demo_replay.jsonl";
             }
         }
+#endif
 
         if (text == null)
         {
@@ -108,75 +150,82 @@ public class ReplayEntry : MonoBehaviour
             yield break;
         }
 
-        // ---- 相机（场景已有 MainCamera 则复用） ----
-        Camera cam = Camera.main;
-        GameObject camGo;
-        if (cam == null)
+        try
         {
-            camGo = new GameObject("Main Camera");
-            camGo.tag = "MainCamera";
-            cam = camGo.AddComponent<Camera>();
-            camGo.AddComponent<AudioListener>();
+            // ---- 相机（场景已有 MainCamera 则复用） ----
+            Camera cam = Camera.main;
+            GameObject camGo;
+            if (cam == null)
+            {
+                camGo = new GameObject("Main Camera");
+                camGo.tag = "MainCamera";
+                cam = camGo.AddComponent<Camera>();
+                camGo.AddComponent<AudioListener>();
+            }
+            else camGo = cam.gameObject;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.55f, 0.74f, 0.87f);
+            cam.fieldOfView = 50;
+            cam.nearClipPlane = 0.5f;
+            cam.farClipPlane = 1200f;
+            var rig = camGo.GetComponent<ReplayCameraRig>();
+            if (rig == null) rig = camGo.AddComponent<ReplayCameraRig>();
+
+            // ---- 智能导播相机管理器 ----
+            var camMgrGo = new GameObject("CameraManager");
+            var camMgr = camMgrGo.AddComponent<CameraManager>();
+            camMgr.mainCam = cam;
+            camMgr.mainRig = rig;
+
+            // ---- 灯光 ----
+            var lightGo = new GameObject("Sun");
+            var light = lightGo.AddComponent<Light>();
+            light.type = LightType.Directional;
+            lightGo.transform.rotation = Quaternion.Euler(55, -25, 0);
+            light.intensity = 1f;
+            light.color = new Color(1f, 0.96f, 0.9f);
+
+            // ---- 静态场景 ----
+            SceneBuilder.Build(data.start.map);
+
+            // ---- 播放器 ----
+            var playerGo = new GameObject("ReplayPlayer");
+            var player = playerGo.AddComponent<ReplayPlayer>();
+
+            player.Setup(data, rig);
+
+            // 注入 CameraManager 引用
+            camMgr.Init(player);
+
+            // ---- 昼夜控制器（复用已有 "Sun" 方向光，不新建） ----
+            var dncGo = new GameObject("DayNightController");
+            dncGo.AddComponent<DayNightController>();
+
+            // ---- 顶部状态面板 ----
+            HudController.Create(player);
+
+            // ---- 左侧事件日志面板 ----
+            var eventLog = EventLogPanelController.Create(player);
+            player.SetEventLog(eventLog);
+
+            // ---- 底部双队面板 + 时间轴 + 播放控制 ----
+            PlaybackControlPanelController.Create(player);
+
+            // ---- 右侧任务面板（占位：推理类任务 + 官方消息） ----
+            TaskPanelController.Create(player);
+
+            // ---- 固定相机初始视角（ReplayCameraRig 接管后负责平滑运镜）----
+            camGo.transform.position = new Vector3(0f, 40f, -8f);
+            camGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+
+            player.SetPlaying(true);
+            Debug.Log("[ReplayEntry] 已加载 " + srcName + "：" + data.rounds.Count + " 回合 · "
+                + data.start.map.width + "×" + data.start.map.height + " 地图");
         }
-        else camGo = cam.gameObject;
-        cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = new Color(0.55f, 0.74f, 0.87f);
-        cam.fieldOfView = 50;
-        cam.nearClipPlane = 0.5f;
-        cam.farClipPlane = 1200f;
-        var rig = camGo.GetComponent<ReplayCameraRig>();
-        if (rig == null) rig = camGo.AddComponent<ReplayCameraRig>();
-
-        // ---- 智能导播相机管理器 ----
-        var camMgrGo = new GameObject("CameraManager");
-        var camMgr = camMgrGo.AddComponent<CameraManager>();
-        camMgr.mainCam = cam;
-        camMgr.mainRig = rig;
-
-        // ---- 灯光 ----
-        var lightGo = new GameObject("Sun");
-        var light = lightGo.AddComponent<Light>();
-        light.type = LightType.Directional;
-        lightGo.transform.rotation = Quaternion.Euler(55, -25, 0);
-        light.intensity = 1f;
-        light.color = new Color(1f, 0.96f, 0.9f);
-
-        // ---- 静态场景 ----
-        SceneBuilder.Build(data.start.map);
-
-        // ---- 播放器 ----
-        var playerGo = new GameObject("ReplayPlayer");
-        var player = playerGo.AddComponent<ReplayPlayer>();
-
-        player.Setup(data, rig);
-
-        // 注入 CameraManager 引用
-        camMgr.Init(player);
-
-        // ---- 昼夜控制器（复用已有 "Sun" 方向光，不新建） ----
-        var dncGo = new GameObject("DayNightController");
-        dncGo.AddComponent<DayNightController>();
-
-        // ---- 顶部状态面板 ----
-        HudController.Create(player);
-
-        // ---- 左侧事件日志面板 ----
-        var eventLog = EventLogPanelController.Create(player);
-        player.SetEventLog(eventLog);
-
-        // ---- 底部双队面板 + 时间轴 + 播放控制 ----
-        PlaybackControlPanelController.Create(player);
-
-        // ---- 右侧任务面板（占位：推理类任务 + 官方消息） ----
-        TaskPanelController.Create(player);
-
-        // ---- 固定相机初始视角（ReplayCameraRig 接管后负责平滑运镜）----
-        camGo.transform.position = new Vector3(0f, 40f, -8f);
-        camGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-
-        player.SetPlaying(true);
-        Debug.Log("[ReplayEntry] 已加载 " + srcName + "：" + data.rounds.Count + " 回合 · "
-            + data.start.map.width + "×" + data.start.map.height + " 地图");
+        catch (System.Exception e)
+        {
+            Debug.LogException(e);
+        }
     }
 
     /// <summary>确保场景有 EventSystem（UGUI 按钮必需）</summary>
