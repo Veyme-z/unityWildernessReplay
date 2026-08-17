@@ -261,9 +261,23 @@ void OnRoundEntered(int n)
             case "build":
                 Log("build", u.DisplayName + " 建造 " + pos, tt);
                 FxFactory.Ring(wp, new Color(0.44f, 0.88f, 0.54f, 0.9f));
+                // 建造（围墙/防御塔）成功 → 头顶"建造围墙*1"徽标 + 挥臂砍劈动画
+                if (u.view != null && !string.IsNullOrEmpty(c.targetName))
+                {
+                    TradeBadge.ShowBuild(u.view.transform, c.targetName, 1);
+                    u.view.TriggerCollect();
+                }
                 break;
             case "collect":
                 Log("cmd", u.DisplayName + " 采集 " + pos, tt);
+                // 采集成功 → 工人头顶"采集 铁*1"徽标（仿 sell 交易徽标）+ 挥臂砍劈动画
+                if (u.view != null)
+                {
+                    string res = engine.ResNameAt(c.x, c.y);
+                    if (!string.IsNullOrEmpty(res))
+                        TradeBadge.ShowCollect(u.view.transform, res, 1);
+                    u.view.TriggerCollect();
+                }
                 break;
             case "sell":
                 Log("trade", u.DisplayName + " 贩卖 " + pos, tt);
@@ -346,9 +360,10 @@ void OnRoundEntered(int n)
         // 光照统一由 DayNightController 管理，此处仅记录日志
     }
 
-    /// <summary>sell 有效且执行者在小贩周围一格内 → 显示交易徽标。</summary>
+    /// <summary>sell 有效且执行者在小贩周围一格内 → 徽标显示在执行者（worker/pioneer）头上。</summary>
     void TryShowTradeBadge(UnitState u, string targetName)
     {
+        if (u.view == null) return;
         var vendorGo = GameObject.Find("NPC_9_20_15");
         if (vendorGo == null) return;
 
@@ -359,12 +374,13 @@ void OnRoundEntered(int n)
         int ugy = Mathf.RoundToInt(15.5f - u.pos.z);
 
         if (Mathf.Max(Mathf.Abs(ugx - vgx), Mathf.Abs(ugy - vgy)) <= 1)
-            TradeBadge.Show(vendorGo.transform, targetName ?? "copper", 1);
+            TradeBadge.Show(u.view.transform, targetName ?? "copper", 1, 1.8f);
     }
 
-    /// <summary>buy 有效且执行者在武器商店周围一格内 → 显示购买徽标。</summary>
+    /// <summary>buy 有效且执行者在武器商店周围一格内 → 徽标显示在执行者（worker/pioneer）头上。</summary>
     void TryShowShopBadge(UnitState u, string targetName)
     {
+        if (u.view == null) return;
         var shopGo = GameObject.Find("NPC_10_25_11");
         if (shopGo == null) return;
 
@@ -375,7 +391,7 @@ void OnRoundEntered(int n)
         int ugy = Mathf.RoundToInt(15.5f - u.pos.z);
 
         if (Mathf.Max(Mathf.Abs(ugx - sgx), Mathf.Abs(ugy - sgy)) <= 1)
-            TradeBadge.Show(shopGo.transform, targetName ?? "购买", 1, 2.3f, 1.2f);
+            TradeBadge.Show(u.view.transform, targetName ?? "购买", 1, 1.8f);
     }
 
     /// <summary>工人/开拓者使用道具 → 角色头顶显示"使用 xx"徽标。</summary>

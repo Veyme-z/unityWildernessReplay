@@ -187,6 +187,9 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         _animator = GetComponentInChildren<Animator>();
         if (_animator != null) _animator.applyRootMotion = false;
 
+        // worker(type=6)：采集/建造砍劈动画用调整过的 Hit_Worker（头摆动减小、手臂摆动增大）
+        if (state.type == 6) ApplyWorkerHitOverride();
+
         var pv = GetComponentInChildren<Pickable>();
         if (pv != null) pv.view = this;
 
@@ -229,6 +232,19 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         float targetW = state.type == 4 ? 2f : (state.type >= 6 && state.type <= 9) ? 1.5f : 1f;
         CalibrateBaseScale(targetW);
         SetHp(state.hp, state.maxHp);
+    }
+
+    /// <summary>worker(type=6)：用 AnimatorOverrideController 把砍劈动画 Hit_A 替换为调整过的 Hit_Worker。</summary>
+    void ApplyWorkerHitOverride()
+    {
+        var hitClip = Resources.Load<AnimationClip>("Animations/Hit_Worker");
+        if (_animator == null || hitClip == null) return;
+        if (_animator.runtimeAnimatorController == null) return;
+        if (_animator.runtimeAnimatorController is AnimatorOverrideController) return;
+
+        var overrides = new AnimatorOverrideController(_animator.runtimeAnimatorController);
+        overrides["Hit_A"] = hitClip;
+        _animator.runtimeAnimatorController = overrides;
     }
 
     /// <summary>防御塔 (type=3)：隐藏旧 Visual，改为 Resources 中可编辑的 Cube Tower Defense 视觉包装 Prefab。</summary>
@@ -459,6 +475,12 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             else _animator.Play("Take Damage");
         }
         catch (System.Exception) { }
+    }
+
+    /// <summary>触发采集动作：挥臂砍劈（复用 onAttack → Hit 砍劈动画）。</summary>
+    public void TriggerCollect()
+    {
+        TriggerAttack();
     }
 
     /// <summary>触发防御塔攻击表现（炮塔转向 + 后坐力 + 枪口特效），目标为世界坐标。</summary>

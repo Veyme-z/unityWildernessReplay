@@ -76,6 +76,9 @@ public class StateEngine
     public int currentRound;
     public int mapW = 41, mapH = 32;
 
+    /// <summary>当前回合资源点类型（"x,y" → 石头/铁/铜），供 collect 徽标查询。</summary>
+    public readonly Dictionary<string, string> resourceNames = new Dictionary<string, string>();
+
     public static readonly string[] TYPE_NAMES =
     { "空地","未知地形","水域","防御塔","基地","围墙","工人","开拓者",
       "任务官","小贩","武器商店","黑熊","骷髅法师","死亡战士","骑兵" };
@@ -101,6 +104,13 @@ public class StateEngine
         var wp = CellToWorld(x, y);
         if (roleType == 4) wp += new Vector3(0.5f, 0f, 0.5f);  // 基地占 2×2，视觉居中
         return wp;
+    }
+
+    /// <summary>查询某格子的资源名（石头/铁/铜），非矿点返回空串。</summary>
+    public string ResNameAt(int x, int y)
+    {
+        string n;
+        return resourceNames.TryGetValue(x + "," + y, out n) ? n : "";
     }
 
     public void Init(ReplayStart start)
@@ -138,6 +148,12 @@ public class StateEngine
 
         // 应用新快照（内部触发出生/死亡回调）
         ApplyRoles(next.teams, !fx);
+
+        // 记录当前回合资源类型（供 collect 徽标查询，与 fx 无关）
+        resourceNames.Clear();
+        foreach (var res in next.resources)
+            if (!string.IsNullOrEmpty(res.resName))
+                resourceNames[res.x + "," + res.y] = res.resName;
 
         // 指令回调：通知 host 每个单位的本回合指令
         if (fx && host != null)
