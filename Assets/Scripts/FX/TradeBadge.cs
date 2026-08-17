@@ -19,6 +19,8 @@ public class TradeBadge : MonoBehaviour
             case "copper": return "铜";
             case "iron":   return "铁";
             case "stone":  return "石";
+            case "wall":   return "围墙";
+            case "tower":  return "防御塔";
             case "medicine": return "药品";
             case "bomb": return "炸弹";
             case "dizzyweapon": return "眩晕法宝";
@@ -49,6 +51,24 @@ public class TradeBadge : MonoBehaviour
     {
         var badge = Obtain(parent, yPos, bgScale);
         badge.SetUseText(itemName, bgScale);
+        return badge;
+    }
+
+    /// <summary>工人采集矿石成功 → 头顶"采集 铁*1"徽标。</summary>
+    public static TradeBadge ShowCollect(Transform parent, string itemName, int qty,
+        float yPos = 1.8f, float bgScale = 1f)
+    {
+        var badge = Obtain(parent, yPos, bgScale);
+        badge.SetCollectText(itemName, qty, bgScale);
+        return badge;
+    }
+
+    /// <summary>工人建造成功 → 头顶"建造围墙*1"徽标。</summary>
+    public static TradeBadge ShowBuild(Transform parent, string itemName, int qty,
+        float yPos = 1.8f, float bgScale = 1f)
+    {
+        var badge = Obtain(parent, yPos, bgScale);
+        badge.SetBuildText(itemName, qty, bgScale);
         return badge;
     }
 
@@ -135,6 +155,20 @@ public class TradeBadge : MonoBehaviour
     {
         if (_tm == null) return;
         _tm.text = "使用 " + CnName(itemName);
+        ApplyText(_tm.text, bgScale);
+    }
+
+    void SetCollectText(string itemName, int qty, float bgScale = 1f)
+    {
+        if (_tm == null) return;
+        _tm.text = "采集 " + (string.IsNullOrEmpty(itemName) ? "资源" : itemName) + "*" + qty;
+        ApplyText(_tm.text, bgScale);
+    }
+
+    void SetBuildText(string itemName, int qty, float bgScale = 1f)
+    {
+        if (_tm == null) return;
+        _tm.text = "建造" + (string.IsNullOrEmpty(itemName) ? "建筑" : CnName(itemName)) + "*" + qty;
         ApplyText(_tm.text, bgScale);
     }
 
