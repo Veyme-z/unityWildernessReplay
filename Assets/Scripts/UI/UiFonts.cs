@@ -51,7 +51,7 @@ public static class UiFonts
     static void PrewarmWorldText(Font font)
     {
         // 覆盖所有 legacy TextMesh 的实际字号：交易徽标 60/72、气泡 110、矿点 100、伤害数字 180
-        const string chars = "贩卖了购买铜铁石药品炸弹眩晕武器围墙修复器召唤令耐久强化攻击小型中型大型首领 x-0123456789";
+        const string chars = "使用贩卖了购买铜铁石药品炸弹眩晕武器围墙修复器召唤令耐久强化攻击小型中型大型首领 x-0123456789";
         int[] sizes = { 60, 72, 100, 110, 180 };
         foreach (int s in sizes)
             font.RequestCharactersInTexture(chars, s, FontStyle.Normal);

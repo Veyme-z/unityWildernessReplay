@@ -21,8 +21,8 @@ public class TradeBadge : MonoBehaviour
             case "stone":  return "石";
             case "medicine": return "药品";
             case "bomb": return "炸弹";
-            case "dizzyweapon": return "眩晕武器";
-            case "wallfixer": return "围墙修复器";
+            case "dizzyweapon": return "眩晕法宝";
+            case "wallfixer": return "围墙修复包";
             case "smallbeastsummonorder": return "小型野兽召唤令";
             case "middlebeastsummonorder": return "中型野兽召唤令";
             case "largebeastsummonorder": return "大型野兽召唤令";
@@ -38,10 +38,26 @@ public class TradeBadge : MonoBehaviour
     public static TradeBadge Show(Transform parent, string itemName, int qty,
         float yPos = 1.5f, float bgScale = 1f)
     {
+        var badge = Obtain(parent, yPos, bgScale);
+        badge.SetText(itemName, qty, bgScale);
+        return badge;
+    }
+
+    /// <summary>角色（工人/开拓者）使用道具 → 头顶"使用 xx"徽标（与小贩/商店同款）。</summary>
+    public static TradeBadge ShowUse(Transform parent, string itemName,
+        float yPos = 1.8f, float bgScale = 1f)
+    {
+        var badge = Obtain(parent, yPos, bgScale);
+        badge.SetUseText(itemName, bgScale);
+        return badge;
+    }
+
+    /// <summary>复用父节点下已有徽标，否则创建新徽标（不含文字内容）。</summary>
+    static TradeBadge Obtain(Transform parent, float yPos, float bgScale)
+    {
         var existing = parent.GetComponentInChildren<TradeBadge>();
         if (existing != null)
         {
-            existing.SetText(itemName, qty, bgScale);
             existing.Refresh();
             return existing;
         }
@@ -79,7 +95,6 @@ public class TradeBadge : MonoBehaviour
         badge._bgRend = bgRend;
         badge._bgTransform = bg.transform;
         badge._bgScale = bgScale;
-        badge.SetText(itemName, qty, bgScale);
         return badge;
     }
 
@@ -113,14 +128,26 @@ public class TradeBadge : MonoBehaviour
         {
             _tm.text = "购买 " + CnName(itemName);
         }
+        ApplyText(_tm.text, bgScale);
+    }
 
-        Debug.Log("[TradeBadge] SetText: " + _tm.text);
+    void SetUseText(string itemName, float bgScale = 1f)
+    {
+        if (_tm == null) return;
+        _tm.text = "使用 " + CnName(itemName);
+        ApplyText(_tm.text, bgScale);
+    }
+
+    /// <summary>把文字落到 TextMesh，并同步字形/材质/底板宽度（全宽半宽区分）。</summary>
+    void ApplyText(string text, float bgScale)
+    {
+        Debug.Log("[TradeBadge] SetText: " + text);
 
         // WebGL: legacy TextMesh 赋值 Dynamic 字体后，材质贴图可能丢失导致隐形，
         // 显式请求字形并同步 MeshRenderer 的材质
         if (_tm.font != null)
         {
-            _tm.font.RequestCharactersInTexture(_tm.text, _tm.fontSize, _tm.fontStyle);
+            _tm.font.RequestCharactersInTexture(text, _tm.fontSize, _tm.fontStyle);
             var mr = _tm.GetComponent<MeshRenderer>();
             if (mr != null)
                 mr.sharedMaterial = _tm.font.material;
@@ -131,13 +158,10 @@ public class TradeBadge : MonoBehaviour
             // 区分全宽/半宽：中文是全宽，空格/ASCII/数字是半宽（约一半宽）。
             // 之前用 len*charWidth 把半宽也当全宽，贩卖文字里 4 个半宽被多算导致偏长。
             float full = 0f, half = 0f;
-            if (!string.IsNullOrEmpty(_tm.text))
+            foreach (char c in text)
             {
-                foreach (char c in _tm.text)
-                {
-                    if (c > 0x7F) full++;   // 非 ASCII（中文等）= 全宽
-                    else half++;            // ASCII（空格/字母/数字）= 半宽
-                }
+                if (c > 0x7F) full++;   // 非 ASCII（中文等）= 全宽
+                else half++;            // ASCII（空格/字母/数字）= 半宽
             }
             float charWidth = 0.35f;   // 全宽字符的世界宽度，可按实际字号微调
             float padding = 0.3f;      // 左右总留白
@@ -177,15 +201,10 @@ public class TradeBadge : MonoBehaviour
         if (k >= 1f) Destroy(gameObject);
     }
 
-    /// <summary>Seek / Reload 时清理所有旧徽标（Vendor + Shop）。</summary>
+    /// <summary>Seek / Reload 时清理所有旧徽标（Vendor + Shop + 角色使用）。</summary>
     public static void Cleanup()
     {
-        foreach (var name in new[] { "NPC_9_20_15", "NPC_10_25_11" })
-        {
-            var go = GameObject.Find(name);
-            if (go == null) continue;
-            foreach (var badge in go.GetComponentsInChildren<TradeBadge>())
-                Destroy(badge.gameObject);
-        }
+        foreach (var badge in Object.FindObjectsOfType<TradeBadge>())
+            Destroy(badge.gameObject);
     }
 }

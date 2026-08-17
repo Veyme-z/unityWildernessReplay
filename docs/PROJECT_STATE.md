@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-14
+> **最后更新**：2026-08-17
 
 ---
 
@@ -37,11 +37,11 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | `Scene/NpcFacingController.cs` | **NPC 转向**：切比雪夫距离来访者检测 + 命令优先级 (executeTask/submitAnswer/sell) + Smooth01 八方向水平旋转；与 FBX/骨骼解耦 |
 | `Scene/TowerVisualController.cs` | **防御塔视觉**（type=3）：炮塔转向 attack 目标 + 两阶段程序化后坐力 + Muzzle 粒子/闪光 + 阵营配色 Tracer/命中圆环；统一 Minigun 塔模型；暂停冻结/Seek 复位 |
 | `Scene/MatLib.cs` | 材质缓存池 + 程序化圆环贴图（Sprites/Default shader） |
-| `Scene/FxFactory.cs` | 气泡/光束特效 |
+| `FX/FxFactory.cs` | 世界空间特效：伤害数字/弹道/光环/气泡 + **CFXR AoE 特效**（`PlayBombEffect`/`PlayDizzyEffect`，统一 `Resources.Load("FX/...")`） |
 | `Scene/Pickable.cs` `Scene/Billboard.cs` | 点击拾取 / 面向相机 |
 | `Scene/ReplayCameraRig.cs` | 相机系统：1/2/3/4 快捷机位 (Global/TeamA/TeamB/Free)；Free 模式左键平移+右键旋转+滚轮锚点缩放 |
 | `Scene/CameraManager.cs` | 自动导播：SmoothDamp + 事件特写 + 震屏 |
-| `FX/TradeBadge.cs` | 交易提示徽标：World Space Billboard + 弹出淡出；Vendor/Shop 独立参数 |
+| `FX/TradeBadge.cs` | 交易/使用徽标：World Space Billboard + 弹出淡出；Vendor/Shop 独立参数；角色使用道具 `ShowUse`（「使用 xx」）；背景框按全宽/半宽自适应 |
 
 ### UI
 `HudController.cs` `EventLogPanelController.cs` `PlaybackControlPanelController.cs` `SettlementPanelController.cs`
@@ -132,6 +132,7 @@ KayKit_Forest_Nature_Pack_1.0_FREE/   # 树/灌木/草/石头 (共享 forest_tex
 KayKit_Medieval_Hexagon_Pack_1.0_FREE/ # 建筑/城墙 (Base/Tower 用)
 Low_Poly_Forest_Pack_Devilswork.Shop_v02/ # 树/围栏 (fence24, treeTall03)
 Robots Ultimate Pack 01 Cute Series/      # Robot 野兽替换素材（Bot/Boxy/Tanker/Metal）
+JMO Assets/Cartoon FX Remaster/           # 特效包：爆炸/魔法阵（AoE 用，已复制到 Resources/FX/ 供运行时加载）
 ```
 
 ---
@@ -260,6 +261,7 @@ Create(state, parent)
 | 调塔大小（直接改 Prefab scale） | 改 `CubeTowers/Tower_Minigun_{Faction}.prefab` 根 Transform 的 scale（与 `visualScale` 相乘，默认 1.6） | 低 |
 | 切换塔模型（当前统一 Minigun） | `TowerVisualController.cs` 的 `ResolveTowerType()` / `TURRET_NODES` | 低 |
 | 换塔模型素材 | 生成 ProjectAssets 源塔 + 重跑 `Tools/WildernessReplay/Build Tower Visual Prefabs`（见第五节） | 中 |
+| 换炸弹/眩晕特效 | `FxFactory.cs` 顶部 `RES_BOMB`/`RES_DIZZY` 路径（或直接替换 `Resources/FX/` 下 prefab）；调大小改 `BOMB_SCALE`/`DIZZY_SCALE` | 低 |
 
 ---
 
@@ -289,6 +291,7 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-08-17 | **AoE 道具特效（Cartoon FX Remaster）**：Bomb/DizzyWeapon 接入 CFXR 特效——`ReplayPlayer.OnSkillAreaEffect` 触发 → `FxFactory.PlayBombEffect/PlayDizzyEffect`（中心世界坐标）；prefab 复制到 `Resources/FX/`（`CFXR Explosion 1`、`CFXR3 Magic Aura A (Runic)`），统一 `Resources.Load("FX/...")`（废弃 AssetDatabase，Editor/WebGL 一致）；`BOMB_SCALE`/`DIZZY_SCALE`=1.8 覆盖 3×3、`Destroy(instance,duration)` 自动回收、Bomb 附加震屏。**角色使用道具徽标**：`TradeBadge.ShowUse` 让工人/开拓者 use 道具时头顶弹「使用 xx」（背景框全宽/半宽自适应） |
 | 2026-08-14 | **中文字体体系 + WebGL 修复**：新增 `UiFonts`（NotoSansSC 统一入口，uGUI Text/TextMesh 共用，Dynamic）；WebGL 下 replay 用 `UnityWebRequest` 读 StreamingAssets（不用 File API）；TradeBadge 隐形根因修复（`RequestCharactersInTexture` 预热 + `MeshRenderer.sharedMaterial = font.material` 材质同步）；物品名中文映射扩展（铜/铁/石/药品/炸弹/眩晕武器/召唤令/耐久强化…） |
 | 2026-08-13 | **防御塔 Prefab scale 可控大小**：`TowerVisualController.Setup()` 原先 `localScale = one * visualScale` 会覆盖 Prefab 根 Transform 的 scale，导致直接改 Prefab 缩放无效；改为 `prefabScale × visualScale`，现在改 `CubeTowers/Tower_Minigun_{Faction}.prefab` 根 scale 即可控制塔大小（与角色/机器人一致） |
 | 2026-08-13 | **防御塔统一 Minigun + 阵营配色特效**：`ResolveTowerType()` 固定返回 Minigun，三塔（红/蓝）统一加载 `Tower_Minigun_{Faction}`（删 `SLOT_TYPES`/slot 映射死代码）；Tracer/命中圆环/枪口灯按阵营配色（红 `#FF2D55` / 蓝 `#007AFF`），统一 Minigun 细线 0.07/0.04、0.15s；后坐力改两阶段 `EaseOutCubic`+`Smooth01`；6 个时间参数 `[SerializeField]`（aimHold/kick/recov/light/particle/ring） |

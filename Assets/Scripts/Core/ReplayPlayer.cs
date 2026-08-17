@@ -293,6 +293,9 @@ void OnRoundEntered(int n)
                     else if (c.hasTarget)
                         msg += " → " + pos;
                     Log("cmd", msg, tt);
+                    // 工人/开拓者使用道具 → 头顶"使用 xx"徽标（与小贩/商店同款）
+                    if (u.type == 6 || u.type == 7)
+                        TryShowUseBadge(u, c.targetName);
                     break;
                 }
             case "detect":
@@ -305,10 +308,26 @@ void OnRoundEntered(int n)
     }
 
     /// <summary>
-    /// 范围技能(AoE)即时视觉特效预留接口。
-    /// TODO：未来在此实现 DizzyWeapon/Bomb 的范围表现（爆炸圈/眩晕覆盖区等），当前留空。
+    /// AoE 道具范围视觉：Bomb（震屏 + 爆炸）/ DizzyWeapon（魔法阵），均走 Cartoon FX Remaster 特效。
+    /// 纯表现层，不改变任何判定与底层数据（实际扣血/眩晕已由 replay 决定）。
     /// </summary>
-    void OnSkillAreaEffect(UnitState u, ReplayCommand c) { }
+    void OnSkillAreaEffect(UnitState u, ReplayCommand c)
+    {
+        var center = engine.CellToWorld(c.x, c.y);
+        string item = (c.targetName ?? "").ToLowerInvariant();
+
+        if (item == "bomb")
+        {
+            // 震屏（Auto 导演模式下由 CameraManager 应用）
+            if (CameraManager.Instance != null)
+                CameraManager.Instance.CameraShake(0.4f, 0.25f);
+            FxFactory.PlayBombEffect(center);
+        }
+        else if (item == "dizzyweapon")
+        {
+            FxFactory.PlayDizzyEffect(center);
+        }
+    }
 
     public void OnTalk(UnitState u, string text)
     {
@@ -357,6 +376,13 @@ void OnRoundEntered(int n)
 
         if (Mathf.Max(Mathf.Abs(ugx - sgx), Mathf.Abs(ugy - sgy)) <= 1)
             TradeBadge.Show(shopGo.transform, targetName ?? "购买", 1, 2.3f, 1.2f);
+    }
+
+    /// <summary>工人/开拓者使用道具 → 角色头顶显示"使用 xx"徽标。</summary>
+    void TryShowUseBadge(UnitState u, string targetName)
+    {
+        if (u.view == null) return;
+        TradeBadge.ShowUse(u.view.transform, targetName ?? "物品");
     }
 
     // ---------- 每帧 ----------

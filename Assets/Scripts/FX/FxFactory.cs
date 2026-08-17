@@ -93,6 +93,45 @@ public static class FxFactory
         f.duration = 3f;
         f.scaleFrom = 0.8f;
     }
+
+    // ── Cartoon FX Remaster AoE 特效 ──
+    // 统一从 Resources/FX 加载：改 Assets/Resources/FX/ 下的 prefab 即可（编辑器 + 打包均生效）。
+    // 未来换特效只需改这两行路径（或直接替换 prefab 文件）。
+    const string RES_BOMB = "FX/CFXR Explosion 1";
+    const string RES_DIZZY = "FX/CFXR3 Magic Aura A (Runic)";
+
+    // 3×3 覆盖：1 格 = 1 世界单位，3×3 = 3 单位。prefab 原始视觉约 2 单位（shape radius≈1），
+    // 乘 1.8 后约 3.6 单位，能完整盖住 3×3 并留少量边缘。在编辑器看到实际大小后只需改这两行微调。
+    const float BOMB_SCALE = 1.8f;
+    const float DIZZY_SCALE = 1.8f;
+    const float BOMB_DURATION = 2.5f;   // 粒子播完后自动销毁
+    const float DIZZY_DURATION = 3.0f;
+
+    /// <summary>炸弹 AoE：实例化 Resources/FX 下的 CFXR 爆炸 prefab，放大覆盖 3×3 并自动回收。</summary>
+    public static void PlayBombEffect(Vector3 center)
+    {
+        SpawnEffect(RES_BOMB, center, BOMB_SCALE, BOMB_DURATION);
+    }
+
+    /// <summary>眩晕 AoE：实例化 Resources/FX 下的 CFXR 魔法阵 prefab，放大覆盖 3×3 并自动回收。</summary>
+    public static void PlayDizzyEffect(Vector3 center)
+    {
+        SpawnEffect(RES_DIZZY, center, DIZZY_SCALE, DIZZY_DURATION);
+    }
+
+    /// <summary>统一从 Resources 加载 + 实例化 + 缩放 + 定时回收。</summary>
+    static void SpawnEffect(string resPath, Vector3 center, float scale, float duration)
+    {
+        var prefab = Resources.Load<GameObject>(resPath);
+        if (prefab == null)
+        {
+            Debug.LogWarning("[FxFactory] 特效 prefab 加载失败: " + resPath);
+            return;
+        }
+        var inst = Object.Instantiate(prefab, center, Quaternion.identity);
+        inst.transform.localScale = Vector3.one * scale;
+        Object.Destroy(inst, duration);
+    }
 }
 
 /// <summary>上浮 + 淡出（伤害数字）</summary>
