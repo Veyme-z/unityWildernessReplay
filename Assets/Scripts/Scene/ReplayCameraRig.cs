@@ -3,7 +3,7 @@ using UnityEngine.EventSystems;
 
 /// <summary>
 /// 电影级导演相机系统：Global / TeamA / TeamB / Free 之间平滑切换。
-/// Free 模式：中键平移 / 右键旋转 / 滚轮向鼠标位置缩放。
+/// Free 模式：左键平移 / Alt+左键(或Ctrl+左键)旋转 / 滚轮向鼠标位置缩放。
 /// 快捷键：1=全局  2=A队  3=B队  4=自由
 /// </summary>
 public class ReplayCameraRig : MonoBehaviour
@@ -168,8 +168,24 @@ public class ReplayCameraRig : MonoBehaviour
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             return;
 
-        // —— 左键拖动：平移 pivot ——
-        if (Input.GetMouseButton(0))
+        // 旋转修饰键：Alt 或 Ctrl 按住 + 左键拖拽 = 旋转（规避 WebGL 浏览器右键手势劫持）
+        bool rotateModifier = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)
+                           || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+
+        // —— 左键 + Alt/Ctrl 拖动：旋转 yaw + pitch ——
+        if (rotateModifier && Input.GetMouseButton(0))
+        {
+            float dx = Input.GetAxis("Mouse X");
+            float dy = Input.GetAxis("Mouse Y");
+            if (Mathf.Abs(dx) > 0.001f) _desiredYaw += dx * freeRotateSpeed;
+            if (Mathf.Abs(dy) > 0.001f)
+            {
+                _desiredPitch -= dy * freeRotateSpeed;
+                _desiredPitch = Mathf.Clamp(_desiredPitch, freeMinPitch, freeMaxPitch);
+            }
+        }
+        // —— 左键拖动（无修饰键）：平移 pivot ——
+        else if (Input.GetMouseButton(0))
         {
             float dx = Input.GetAxis("Mouse X");
             float dy = Input.GetAxis("Mouse Y");
@@ -179,19 +195,6 @@ public class ReplayCameraRig : MonoBehaviour
                 Vector3 forward = Vector3.Cross(right, Vector3.up).normalized;
                 float scale = _desiredDistance * 0.003f * freePanSpeed;
                 _desiredPivot -= (right * dx + forward * dy) * scale;
-            }
-        }
-
-        // —— 右键拖动：旋转 yaw + pitch ——
-        if (Input.GetMouseButton(1))
-        {
-            float dx = Input.GetAxis("Mouse X");
-            float dy = Input.GetAxis("Mouse Y");
-            if (Mathf.Abs(dx) > 0.001f) _desiredYaw += dx * freeRotateSpeed;
-            if (Mathf.Abs(dy) > 0.001f)
-            {
-                _desiredPitch -= dy * freeRotateSpeed;
-                _desiredPitch = Mathf.Clamp(_desiredPitch, freeMinPitch, freeMaxPitch);
             }
         }
 
