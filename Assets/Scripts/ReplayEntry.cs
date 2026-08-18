@@ -63,40 +63,27 @@ public class ReplayEntry : MonoBehaviour
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         // WebGL：File API 不可用，改用 UnityWebRequest 从 StreamingAssets 拉取。
+        // 使用「相对当前网页」的相对路径（协议自动跟随页面），避免 http/https 混用触发
+        // "Insecure connection not allowed"。同步异常（构造/发起请求）在 LoadWebText 内捕获，
+        // 异常仅记日志并兜底走 demo，绝不让异常中断游戏初始化。
         if (text == null)
         {
-            string url = Application.streamingAssetsPath + "/replay.txt";
-            using (var req = UnityWebRequest.Get(url))
+            string url = RelativeStreamingUrl("replay.txt");
+            yield return LoadWebText(url, got =>
             {
-                yield return req.SendWebRequest();
-                if (req.result == UnityWebRequest.Result.Success && !string.IsNullOrEmpty(req.downloadHandler.text))
-                {
-                    text = req.downloadHandler.text;
-                    srcName = "replay.txt";
-                }
-                else
-                {
-                    Debug.LogError("[ReplayEntry] WebGL 读取 replay.txt 失败: " + url + " error=" + req.error);
-                }
-            }
+                text = got;
+                srcName = "replay.txt";
+            });
         }
 
         if (text == null)
         {
-            string url = Application.streamingAssetsPath + "/demo_replay.jsonl";
-            using (var req = UnityWebRequest.Get(url))
+            string url = RelativeStreamingUrl("demo_replay.jsonl");
+            yield return LoadWebText(url, got =>
             {
-                yield return req.SendWebRequest();
-                if (req.result == UnityWebRequest.Result.Success && !string.IsNullOrEmpty(req.downloadHandler.text))
-                {
-                    text = req.downloadHandler.text;
-                    srcName = "demo_replay.jsonl";
-                }
-                else
-                {
-                    Debug.LogError("[ReplayEntry] WebGL 读取 demo_replay.jsonl 失败: " + url + " error=" + req.error);
-                }
-            }
+                text = got;
+                srcName = "demo_replay.jsonl";
+            });
         }
 #else
         // 编辑器 / Standalone：保持原样。
@@ -226,6 +213,65 @@ public class ReplayEntry : MonoBehaviour
         {
             Debug.LogException(e);
         }
+    }
+
+    /// <summary>
+    /// WebGL 用 UnityWebRequest 拉取文本。同步部分（构造 + 发起）包 try/catch，
+    /// 捕获后仅记日志并正常结束协程（onGot 不会被调用 → 调用方走下一个兜底分支）。
+    /// 注意：yield return 不能出现在带 catch 的 try 块内（C# CS1626），
+    /// 所以这里先把请求建好，再在 try 外 yield 等待结果。
+    /// </summary>
+    IEnumerator LoadWebText(string url, System.Action<string> onGot)
+    {
+        UnityWebRequest req = null;
+        UnityWebRequestAsyncOperation op = null;
+        try
+        {
+            req = UnityWebRequest.Get(url);
+            op = req.SendWebRequest();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogException(ex);
+            if (req != null) req.Dispose();
+            yield break;
+        }
+
+        yield return op;
+
+        using (req)
+        {
+            if (req.result == UnityWebRequest.Result.Success && !string.IsNullOrEmpty(req.downloadHandler.text))
+            {
+                onGot(req.downloadHandler.text);
+            }
+            else
+            {
+                Debug.LogError("[ReplayEntry] WebGL 读取失败: " + url + " error=" + req.error);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 把 StreamingAssets 路径归一化为「相对当前网页」的相对 URL：
+    /// 去掉可能的 http(s)://host 前缀（WebGL 下 Application.streamingAssetsPath 可能返回绝对地址），
+    /// 让协议自动跟随当前页面，避免 http/https 混用触发 "Insecure connection not allowed"。
+    /// </summary>
+    static string RelativeStreamingUrl(string fileName)
+    {
+        string path = Application.streamingAssetsPath;
+        int schemeIdx = path.IndexOf("://", System.StringComparison.Ordinal);
+        if (schemeIdx >= 0)
+        {
+            int hostEnd = path.IndexOf('/', schemeIdx + 3);
+            path = hostEnd >= 0 ? path.Substring(hostEnd + 1) : "";
+        }
+        else
+        {
+            path = path.TrimStart('/');   // 相对路径去掉可能的开头斜杠
+        }
+        path = path.TrimEnd('/');
+        return string.IsNullOrEmpty(path) ? fileName : path + "/" + fileName;
     }
 
     /// <summary>确保场景有 EventSystem（UGUI 按钮必需）</summary>
