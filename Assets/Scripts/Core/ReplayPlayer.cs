@@ -239,6 +239,11 @@ void OnRoundEntered(int n)
     {
         Log("kill", u.DisplayName + " 阵亡", u.teamType);
         if (u.view != null && u.IsBeast) u.view.TriggerDeath();
+        // 被摧毁特效：围墙 → 瓦砾炸开；防御塔/基地/野兽 → 爆炸
+        if (u.type == 5)
+            FxFactory.PlayRubbleEffect(u.pos);
+        else if (u.IsBuilding || u.IsBeast)
+            FxFactory.PlayDemolishEffect(u.pos);
     }
 
     public void OnCommand(UnitState u, ReplayCommand c)
@@ -261,12 +266,17 @@ void OnRoundEntered(int n)
             case "build":
                 Log("build", u.DisplayName + " 建造 " + pos, tt);
                 FxFactory.Ring(wp, new Color(0.44f, 0.88f, 0.54f, 0.9f));
+                FxFactory.PlayBuildEffect(wp);
                 // 建造（围墙/防御塔）成功 → 头顶"建造围墙*1"徽标 + 挥臂砍劈动画
                 if (u.view != null && !string.IsNullOrEmpty(c.targetName))
                 {
                     TradeBadge.ShowBuild(u.view.transform, c.targetName, 1);
                     u.view.TriggerCollect();
                 }
+                break;
+            case "remove":
+                Log("build", u.DisplayName + " 拆除 " + pos, tt);
+                FxFactory.PlayBuildEffect(wp);
                 break;
             case "collect":
                 Log("cmd", u.DisplayName + " 采集 " + pos, tt);
@@ -310,6 +320,13 @@ void OnRoundEntered(int n)
                     // 工人/开拓者使用道具 → 头顶"使用 xx"徽标（与小贩/商店同款）
                     if (u.type == 6 || u.type == 7)
                         TryShowUseBadge(u, c.targetName);
+                    // 恢复类道具（生命药剂/围墙修复包）→ 单位位置播放恢复特效
+                    string useItem = (c.targetName ?? "").ToLowerInvariant();
+                    if (useItem == "medicine" || useItem == "wallfixer")
+                    {
+                        Vector3 healPos = c.hasTarget ? wp : u.pos;
+                        FxFactory.PlayHealEffect(healPos);
+                    }
                     break;
                 }
             case "detect":

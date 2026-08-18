@@ -99,6 +99,10 @@ public static class FxFactory
     // 未来换特效只需改这两行路径（或直接替换 prefab 文件）。
     const string RES_BOMB = "FX/CFXR Explosion 1";
     const string RES_DIZZY = "FX/CFXR3 Magic Aura A (Runic)";
+    const string RES_HEAL = "FX/Hovl Heal";                    // 恢复血量（Hovl Studio 治疗光环）
+    const string RES_BUILD = "FX/Hovl Build Dust";             // 修筑建筑（Hovl Studio 尘土）
+    const string RES_DEMOLISH = "FX/Hovl Demolish Explosion";  // 拆除建筑（Hovl Studio 爆炸）
+    const string RES_RUBBLE = "FX/Hovl Rubble";                // 围墙摧毁（瓦砾炸开）
 
     // 3×3 覆盖：1 格 = 1 世界单位，3×3 = 3 单位。prefab 原始视觉约 2 单位（shape radius≈1），
     // 乘 1.8 后约 3.6 单位，能完整盖住 3×3 并留少量边缘。在编辑器看到实际大小后只需改这两行微调。
@@ -106,6 +110,15 @@ public static class FxFactory
     const float DIZZY_SCALE = 1.8f;
     const float BOMB_DURATION = 2.5f;   // 粒子播完后自动销毁
     const float DIZZY_DURATION = 3.0f;
+    const float HEAL_SCALE = 1.2f;
+    const float BUILD_SCALE = 0.3f;
+    const float BUILD_ALPHA = 0.5f;   // 尘土透明度系数（乘到粒子 startColor.alpha）
+    const float HEAL_DURATION = 2.0f;
+    const float BUILD_DURATION = 1.5f;
+    const float DEMOLISH_SCALE = 1.2f;
+    const float DEMOLISH_DURATION = 1.5f;
+    const float RUBBLE_SCALE = 1.2f;
+    const float RUBBLE_DURATION = 1.5f;
 
     /// <summary>炸弹 AoE：实例化 Resources/FX 下的 CFXR 爆炸 prefab，放大覆盖 3×3 并自动回收。</summary>
     public static void PlayBombEffect(Vector3 center)
@@ -119,8 +132,32 @@ public static class FxFactory
         SpawnEffect(RES_DIZZY, center, DIZZY_SCALE, DIZZY_DURATION);
     }
 
-    /// <summary>统一从 Resources 加载 + 实例化 + 缩放 + 定时回收。</summary>
-    static void SpawnEffect(string resPath, Vector3 center, float scale, float duration)
+    /// <summary>恢复血量：Hovl Studio 治疗光环，在单位位置短暂播放。</summary>
+    public static void PlayHealEffect(Vector3 center)
+    {
+        SpawnEffect(RES_HEAL, center, HEAL_SCALE, HEAL_DURATION);
+    }
+
+    /// <summary>修筑建筑：Hovl Studio 尘土，在建造位置短暂播放。</summary>
+    public static void PlayBuildEffect(Vector3 center)
+    {
+        SpawnEffect(RES_BUILD, center, BUILD_SCALE, BUILD_DURATION, BUILD_ALPHA);
+    }
+
+    /// <summary>拆除建筑：Hovl Studio 爆炸，在拆除位置短暂播放。</summary>
+    public static void PlayDemolishEffect(Vector3 center)
+    {
+        SpawnEffect(RES_DEMOLISH, center, DEMOLISH_SCALE, DEMOLISH_DURATION);
+    }
+
+    /// <summary>围墙摧毁：瓦砾炸开，在围墙位置短暂播放。</summary>
+    public static void PlayRubbleEffect(Vector3 center)
+    {
+        SpawnEffect(RES_RUBBLE, center, RUBBLE_SCALE, RUBBLE_DURATION);
+    }
+
+    /// <summary>统一从 Resources 加载 + 实例化 + 缩放 + 透明度 + 定时回收。</summary>
+    static void SpawnEffect(string resPath, Vector3 center, float scale, float duration, float alpha = 1f)
     {
         var prefab = Resources.Load<GameObject>(resPath);
         if (prefab == null)
@@ -130,6 +167,17 @@ public static class FxFactory
         }
         var inst = Object.Instantiate(prefab, center, Quaternion.identity);
         inst.transform.localScale = Vector3.one * scale;
+        if (alpha < 1f)
+        {
+            foreach (var ps in inst.GetComponentsInChildren<ParticleSystem>())
+            {
+                var m = ps.main;
+                var sc = m.startColor;
+                var c = sc.color;
+                sc.color = new Color(c.r, c.g, c.b, c.a * alpha);
+                m.startColor = sc;
+            }
+        }
         Object.Destroy(inst, duration);
     }
 }
@@ -195,6 +243,7 @@ public class RingFx : MonoBehaviour
         transform.localScale = new Vector3(s, s, 1);
         if (_rend != null)
         {
+            if (_mpb == null) _mpb = new MaterialPropertyBlock();
             _mpb.SetColor("_Color", new Color(1, 1, 1, 1f - k));
             _rend.SetPropertyBlock(_mpb);
         }
