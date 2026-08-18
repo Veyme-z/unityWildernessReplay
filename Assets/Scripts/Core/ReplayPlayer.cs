@@ -13,6 +13,8 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
     [Header("播放参数")]
     public float baseRoundDuration = 0.5f;   // 1x 速度下每回合秒数
 
+    const int DIZZY_FREEZE_ROUNDS = 4;       // 眩晕法宝冻结回合数（对齐 replay 数据观测：命中野兽连续不动+不攻击 ≈ 4 回合）
+
     public ReplayData data;
     public StateEngine engine = new StateEngine();
     public ReplayCameraRig camRig;
@@ -356,7 +358,8 @@ void OnRoundEntered(int n)
         }
         else if (item == "dizzyweapon")
         {
-            FxFactory.PlayDizzyEffect(center);
+            // 法阵持续 = 冻结回合数 × 每回合秒数：与机器人被冻结的回合数对齐，且随播放倍速缩放
+            FxFactory.PlayDizzyEffect(center, DIZZY_FREEZE_ROUNDS * RoundDur);
         }
     }
 

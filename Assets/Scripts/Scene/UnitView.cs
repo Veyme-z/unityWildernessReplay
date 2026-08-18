@@ -15,13 +15,19 @@ public class UnitView : MonoBehaviour
     Transform _body;
     Transform _hpFill;
     Transform _selRing;
-    float _hpY, _hpW;
+    float _hpY, _hpW, _hpThick = 0.05f;
     MeshRenderer _hpFillRend;
     MaterialPropertyBlock _mpb;
     Animator _animator;
     ReplayPlayer _player;
     bool _hasParams = true;
     TowerVisualController _towerVisual;
+
+    // ── 野兽邪恶光环（Beast 11-14）──
+    const string BEAST_AURA_RES = "FX/Hovl Debuff"; // Hovl Debuff 邪恶光环（Resources 拷贝）
+    const float BEAST_AURA_NATIVE = 15.42f;         // 光环原始直径（实测模拟 bounds）
+    const float BEAST_AURA_RATIO = 1.4f;            // 光环直径 / 机器人最大占地（框住它）
+    const float BEAST_AURA_MIN_WORLD = 0.5f;        // 最小世界尺寸兜底
 
     // ── 平滑转向 ──
     Vector3 _prevPos;
@@ -128,6 +134,45 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         EnsureRing();
         CalibrateBaseScale(1.5f);
         SetHp(state.hp, state.maxHp);
+
+        // Beast 邪恶光环：Hovl Debuff 光环框住机器人
+        SetupBeastAura();
+    }
+
+    // ══════════ 野兽邪恶光环（Beast 11-14 通用）══════════
+    /// <summary>在野兽机器人周围挂上 Hovl Debuff 邪恶光环，随单位移动并持续循环“框住”它。</summary>
+    void SetupBeastAura()
+    {
+        var prefab = Resources.Load<GameObject>(BEAST_AURA_RES);
+        if (prefab == null)
+        {
+            Debug.LogWarning("[UnitView] 野兽光环 prefab 加载失败: " + BEAST_AURA_RES);
+            return;
+        }
+
+        var aura = Object.Instantiate(prefab, transform);
+        aura.name = "EvilAura";
+
+        // 以机器人视觉占地为基准，光环放大 BEAST_AURA_RATIO 倍“框住”它
+        Bounds b = new Bounds(transform.position, Vector3.zero);
+        bool hasR = false;
+        foreach (var r in GetComponentsInChildren<Renderer>())
+        {
+            if (r.bounds.size.sqrMagnitude > 0.0001f) { b.Encapsulate(r.bounds); hasR = true; }
+        }
+        float footprint = hasR ? Mathf.Max(b.size.x, b.size.z) : 0.5f;
+        float worldTarget = Mathf.Max(footprint * BEAST_AURA_RATIO, BEAST_AURA_MIN_WORLD);
+        float lossy = Mathf.Max(transform.lossyScale.x, 0.001f);
+        aura.transform.localScale = Vector3.one * (worldTarget / BEAST_AURA_NATIVE / lossy);
+        aura.transform.localPosition = new Vector3(0f, hasR ? b.size.y * 0.35f : 0f, 0f);
+
+        // 强制循环并开播，确保持续环绕
+        foreach (var ps in aura.GetComponentsInChildren<ParticleSystem>(true))
+        {
+            var main = ps.main;
+            main.loop = true;
+            if (!ps.isPlaying) ps.Play();
+        }
     }
 
     void SetupRobotAnimator()
@@ -325,6 +370,9 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         return hasRenderer ? Mathf.Max(bounds.size.x, bounds.size.z) : 0.5f;
     }
 
+    /// <summary>防御塔(3)血条顶部安全偏移：在 VisualHeight() 塔顶高度之上再抬高，确保清晰悬浮在炮塔正上方。</summary>
+    const float TOWER_HP_TOP_PADDING = 0.9f;
+
     /// <summary>将 Prefab 中扁平的 Quad 血条在运行时升级为 3D Cube 网格</summary>
     void UpgradeHpTo3D()
     {
@@ -344,7 +392,7 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         _hpW = Mathf.Max(modelW, 0.3f);
         // 基地/塔在模型顶部，开拓者 0.65，其余 0.55
         if (state.type == 4) { _hpY = modelH + 2f; _hpW *= 1.6f; }
-        else if (state.type == 3) { _hpY = modelH + 0.5f; _hpW *= 1.6f; }
+        else if (state.type == 3) { _hpY = modelH + TOWER_HP_TOP_PADDING; _hpW *= 1.28f; _hpThick = 0.06f; }
         else if (state.type == 7) _hpY = modelH * 0.65f;
         else if (state.type == 11) { _hpY = modelH + 0.4f; _hpW *= 1.3f; }
         else if (state.type == 12) { _hpY = modelH - 0.2f; _hpW *= 1.3f; }
@@ -357,7 +405,7 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         // 填充条
         if (_hpFill == null)
         {
-            _hpFill = CreateHpCube(transform, "HpFill", new Vector3(_hpW, 0.05f, 0.02f), new Color(0.267f, 0.925f, 0.435f), cubeMesh);
+            _hpFill = CreateHpCube(transform, "HpFill", new Vector3(_hpW, _hpThick, 0.02f), new Color(0.267f, 0.925f, 0.435f), cubeMesh);
             _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
         }
         else
@@ -365,7 +413,7 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             var bb = _hpFill.GetComponent<Billboard>();
             if (bb != null) Destroy(bb);
             _hpFill.GetComponent<MeshFilter>().sharedMesh = cubeMesh;
-            _hpFill.localScale = new Vector3(_hpW, 0.05f, 0.02f);
+            _hpFill.localScale = new Vector3(_hpW, _hpThick, 0.02f);
             if (_hpFillRend == null) _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
             if (_hpFillRend != null && (_hpFillRend.sharedMaterial.name.Contains("Default") || _hpFillRend.sharedMaterial.shader.name != "Standard"))
                 _hpFillRend.sharedMaterial = new Material(Shader.Find("Standard")) { color = new Color(0.267f, 0.925f, 0.435f) };
@@ -436,13 +484,11 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         float maxW = 0f;
         Bounds combined = new Bounds(transform.position, Vector3.zero);
         Renderer[] rs = GetComponentsInChildren<Renderer>();
-        bool hasAny = false;
         for (int i = 0; i < rs.Length; i++)
         {
             combined.Encapsulate(rs[i].bounds);
             float w = Mathf.Max(rs[i].bounds.size.x, rs[i].bounds.size.z);
             if (w > maxW) maxW = w;
-            hasAny = true;
         }
         if (maxW > 0.01f) _baseScale = targetWidth / maxW;
         // 基地模型 pivot 偏移修正
@@ -599,6 +645,7 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             }
             catch (System.Exception) { }
         }
+
     }
 
     public void SetAnimScale(float s) { state.animScale = s; }
@@ -608,7 +655,7 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         if (_hpFill == null || _hpFillRend == null) return;
         float pct = Mathf.Clamp01((float)hp / Mathf.Max(1, maxHp));
         float fillW = _hpW;
-        _hpFill.localScale = new Vector3(fillW * pct, 0.05f, 0.02f);
+        _hpFill.localScale = new Vector3(fillW * pct, _hpThick, 0.02f);
         _hpFill.localPosition = new Vector3(-fillW * 0.5f * (1f - pct), _hpY, 0);
         Color c = pct > 0.6f ? new Color(0.267f, 0.925f, 0.435f)
               : pct > 0.3f ? new Color(1f, 0.788f, 0.302f)

@@ -11,7 +11,6 @@ GameObject:
   - component: {fileID: 6200705285645596404}
   - component: {fileID: 806308848148564049}
   - component: {fileID: 2716627612957559167}
-  - component: {fileID: 4487933103150986297}
   m_Layer: 0
   m_Name: SelRing
   m_TagString: Untagged
@@ -84,18 +83,6 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &4487933103150986297
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 250347133168164943}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &613114201146421633
 GameObject:
   m_ObjectHideFlags: 0
@@ -107,7 +94,6 @@ GameObject:
   - component: {fileID: 7146518011164089121}
   - component: {fileID: 8432529043167621924}
   - component: {fileID: 5713780181270602454}
-  - component: {fileID: 787974627023409749}
   m_Layer: 0
   m_Name: HpFill
   m_TagString: Untagged
@@ -180,18 +166,6 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &787974627023409749
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 613114201146421633}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &2776949528373881281
 GameObject:
   m_ObjectHideFlags: 0
@@ -202,7 +176,6 @@ GameObject:
   m_Component:
   - component: {fileID: 3359999875045131133}
   - component: {fileID: 9126997188999959139}
-  - component: {fileID: 154021010312637848}
   m_Layer: 0
   m_Name: Sprite
   m_TagString: Untagged
@@ -277,18 +250,6 @@ SpriteRenderer:
   m_WasSpriteAssigned: 0
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
---- !u!114 &154021010312637848
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2776949528373881281}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &3427939777287328740
 GameObject:
   m_ObjectHideFlags: 0
@@ -381,7 +342,6 @@ GameObject:
   - component: {fileID: 6634145417496269676}
   - component: {fileID: 6078850265742695819}
   - component: {fileID: 6441816509874092111}
-  - component: {fileID: 9003038363413782560}
   m_Layer: 0
   m_Name: HpBar
   m_TagString: Untagged
@@ -454,18 +414,6 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &9003038363413782560
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5036974716366354628}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &6879416493110506230
 GameObject:
   m_ObjectHideFlags: 0
@@ -476,7 +424,6 @@ GameObject:
   m_Component:
   - component: {fileID: 6335380454804005217}
   - component: {fileID: 1021847909678780787}
-  - component: {fileID: 1140782038435821322}
   m_Layer: 0
   m_Name: Body
   m_TagString: Untagged
@@ -520,16 +467,3 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 0.6
   m_Center: {x: 0, y: 0.5, z: 0}
---- !u!114 &1140782038435821322
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6879416493110506230}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  view: {fileID: 6800593909723366330}
