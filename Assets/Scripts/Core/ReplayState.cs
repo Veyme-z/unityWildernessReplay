@@ -45,6 +45,9 @@ public class TeamStat
     public int score;
     public int tasks;
     public string taskText = "暂无任务";
+    public int taskCorrect;     // 答对题数（对应 replay completeTaskCount）
+    public int taskWrong;       // 答错题数（对应 replay invalidTaskCount）
+    public bool hasActiveTask;  // 当前是否已接取任务（task.taskType 非空）
     public int baseHp = -1;
 }
 
@@ -127,7 +130,10 @@ public class StateEngine
                 type = t.type,
                 gold = t.goldNum >= 0 ? t.goldNum : t.diamondNum,
                 score = t.totalScore,
-                tasks = t.completeTaskCount
+                tasks = t.completeTaskCount,
+                taskCorrect = t.completeTaskCount,
+                taskWrong = t.invalidTaskCount,
+                hasActiveTask = t.task != null && !string.IsNullOrEmpty(t.task.taskType)
             };
         }
         ApplyRoles(start.teams, true);
@@ -307,6 +313,9 @@ public class StateEngine
             st.gold = t.goldNum >= 0 ? t.goldNum : st.gold;
             st.score = t.totalScore;
             st.tasks = t.completeTaskCount;
+            st.taskCorrect = t.completeTaskCount;
+            st.taskWrong = t.invalidTaskCount;
+            st.hasActiveTask = t.task != null && !string.IsNullOrEmpty(t.task.taskType);
             foreach (var r in t.roles)
                 if (r.roleType == 4) { st.baseHp = r.health; break; }
             if (t.task != null && !string.IsNullOrEmpty(t.task.taskType))

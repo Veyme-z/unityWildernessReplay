@@ -7,8 +7,8 @@ using UnityEngine.UI;
 /// </summary>
 public class PlaybackControlPanelController : MonoBehaviour
 {
-    [SerializeField] Text _redName, _redHp, _redGold, _redScore, _redTower, _redWall, _redMember, _redBag;
-    [SerializeField] Text _blueName, _blueHp, _blueGold, _blueScore, _blueTower, _blueWall, _blueMember, _blueBag;
+    [SerializeField] Text _redName, _redHp, _redGold, _redScore, _redTower, _redWall, _redMember, _redTask, _redBag;
+    [SerializeField] Text _blueName, _blueHp, _blueGold, _blueScore, _blueTower, _blueWall, _blueMember, _blueTask, _blueBag;
     [SerializeField] Slider _slider;
     [SerializeField] Text _roundText;
     [SerializeField] Button _playBtn; [SerializeField] Text _playLabel;
@@ -162,8 +162,8 @@ public class PlaybackControlPanelController : MonoBehaviour
         // y=55:  时间轴
         // y=0:   控制按钮
 
-        // ── 双队面板（一条 bar，两队相邻，三行数据） ──
-        var teamBar = Bar(canvasGo.transform, "TeamBar", 0, 108, 700, 88, bg);
+        // ── 双队面板（一条 bar，两队相邻，四行数据） ──
+        var teamBar = Bar(canvasGo.transform, "TeamBar", 0, 108, 700, 116, bg);
         // 红队（左半）— 第一行
         ctrl._redName  = Lbl(teamBar.transform, "RN", "🔴 ---", 14, 8, -6, 160, 22, new Color(0.94f,0.34f,0.28f), f, TextAnchor.MiddleLeft);
         ctrl._redHp    = Lbl(teamBar.transform, "RH", "❤ ---", 13, 8, -28, 80, 20, new Color(0.94f,0.42f,0.38f), f, TextAnchor.MiddleLeft);
@@ -172,8 +172,10 @@ public class PlaybackControlPanelController : MonoBehaviour
         // 红队 — 第二行（塔/墙）
         ctrl._redTower = Lbl(teamBar.transform, "RTw", "🗼 ---", 12, 8, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
         ctrl._redWall  = Lbl(teamBar.transform, "RWl", "🧱 ---", 12, 100, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        // 红队 — 第三行（背包，宽展）
-        ctrl._redBag   = Lbl(teamBar.transform, "RBg", "🎒 ---", 12, 8, -72, 340, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
+        // 红队 — 第三行（任务对错，宽展）
+        ctrl._redTask  = Lbl(teamBar.transform, "RTk", "尚未接受任务", 12, 8, -72, 340, 20, new Color(0.82f,0.76f,0.5f), f, TextAnchor.MiddleLeft);
+        // 红队 — 第四行（背包，宽展）
+        ctrl._redBag   = Lbl(teamBar.transform, "RBg", "🎒 ---", 12, 8, -94, 340, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
         // 分隔线
         var div = new GameObject("Div"); div.transform.SetParent(teamBar.transform, false);
         var drt = div.AddComponent<RectTransform>(); drt.anchorMin=new Vector2(0.5f,0.1f); drt.anchorMax=new Vector2(0.5f,0.9f);
@@ -187,8 +189,10 @@ public class PlaybackControlPanelController : MonoBehaviour
         // 蓝队 — 第二行
         ctrl._blueTower = Lbl(teamBar.transform, "BTw", "🗼 ---", 12, 362, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
         ctrl._blueWall  = Lbl(teamBar.transform, "BWl", "🧱 ---", 12, 454, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        // 蓝队 — 第三行（背包，宽展）
-        ctrl._blueBag   = Lbl(teamBar.transform, "BBg", "🎒 ---", 12, 362, -72, 340, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
+        // 蓝队 — 第三行（任务对错，宽展）
+        ctrl._blueTask  = Lbl(teamBar.transform, "BTk", "尚未接受任务", 12, 362, -72, 340, 20, new Color(0.82f,0.76f,0.5f), f, TextAnchor.MiddleLeft);
+        // 蓝队 — 第四行（背包，宽展）
+        ctrl._blueBag   = Lbl(teamBar.transform, "BBg", "🎒 ---", 12, 362, -94, 340, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
 
         // ── 时间轴 ──
         var tlBar = Bar(canvasGo.transform, "TimelineBar", 0, 55, 0, 50, bg);
@@ -276,11 +280,13 @@ public class PlaybackControlPanelController : MonoBehaviour
         _redName   = FindText(red,  "RN");  _redHp     = FindText(red,  "RH");
         _redGold   = FindText(red,  "RG");  _redScore  = FindText(red,  "RS");
         _redTower  = FindText(red,  "RTw"); _redWall   = FindText(red,  "RWl");
-        _redMember = FindText(red,  "RMm"); _redBag    = FindText(red,  "RBg");
+        _redMember = FindText(red,  "RMm"); _redTask   = FindText(red,  "RTk");
+        _redBag    = FindText(red,  "RBg");
         _blueName   = FindText(blue, "BN");  _blueHp     = FindText(blue, "BH");
         _blueGold   = FindText(blue, "BG");  _blueScore  = FindText(blue, "BS");
         _blueTower  = FindText(blue, "BTw"); _blueWall   = FindText(blue, "BWl");
-        _blueMember = FindText(blue, "BMm"); _blueBag    = FindText(blue, "BBg");
+        _blueMember = FindText(blue, "BMm"); _blueTask   = FindText(blue, "BTk");
+        _blueBag    = FindText(blue, "BBg");
     }
 
     static Text FindText(Transform parent, string name)
@@ -320,7 +326,7 @@ public class PlaybackControlPanelController : MonoBehaviour
                     foreach(var b in u.backpacks) { int n; agg.TryGetValue(b.name, out n); agg[b.name]=n+b.num; }
             }
             var bag=new System.Text.StringBuilder();
-            foreach(var item in agg) bag.Append(item.Key).Append("x").Append(item.Value).Append(" ");
+            foreach(var item in agg) bag.Append(ItemNameCn.Cn(item.Key)).Append("x").Append(item.Value).Append(" ");
             string bagStr=bag.Length>0?bag.ToString().Trim():"空";
 
             // 队伍类型→卡片：defender=红方，challenger=蓝方（与 TeamColorApplicator 一致）
@@ -328,7 +334,8 @@ public class PlaybackControlPanelController : MonoBehaviour
             var name=isRed?_redName:_blueName;     var hpT=isRed?_redHp:_blueHp;
             var goldT=isRed?_redGold:_blueGold;    var scoreT=isRed?_redScore:_blueScore;
             var wallT=isRed?_redWall:_blueWall;    var towerT=isRed?_redTower:_blueTower;
-            var memberT=isRed?_redMember:_blueMember; var bagT=isRed?_redBag:_blueBag;
+            var memberT=isRed?_redMember:_blueMember; var taskT=isRed?_redTask:_blueTask;
+            var bagT=isRed?_redBag:_blueBag;
 
             if(name!=null){ name.text=isRed?"红方":"蓝方"; name.color=isRed?colRed:colBlue; }
             if(hpT!=null) hpT.text="基地 "+hp;
@@ -337,6 +344,15 @@ public class PlaybackControlPanelController : MonoBehaviour
             if(wallT!=null) wallT.text="围墙 "+walls+"/"+MAX_WALL;
             if(towerT!=null) towerT.text="防御塔 "+towers+"/"+MAX_TOWER;
             if(memberT!=null) memberT.text="人数 "+members+"/"+MAX_MEMBER;
+            if(taskT!=null)
+            {
+                // 已接取/已作答 → 显示对错；否则显示"尚未接受任务"
+                // 注意：不加 emoji 前缀，避免回退字体行高不同导致与围墙行对不齐
+                if (st.taskCorrect > 0 || st.taskWrong > 0 || st.hasActiveTask)
+                    taskT.text="任务 对"+st.taskCorrect+" 错"+st.taskWrong;
+                else
+                    taskT.text="尚未接受任务";
+            }
             if(bagT!=null) bagT.text="背包 "+bagStr;
         }
         if(_playLabel!=null){ _playLabel.text=p.playing?"暂停":"播放"; _playBtn.GetComponent<Image>().color=p.playing?new Color(0.96f,0.78f,0.22f):new Color(0,0.478f,1f); }
