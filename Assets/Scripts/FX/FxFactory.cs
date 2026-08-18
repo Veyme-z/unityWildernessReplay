@@ -98,7 +98,7 @@ public static class FxFactory
     // 统一从 Resources/FX 加载：改 Assets/Resources/FX/ 下的 prefab 即可（编辑器 + 打包均生效）。
     // 未来换特效只需改这两行路径（或直接替换 prefab 文件）。
     const string RES_BOMB = "FX/CFXR Explosion 1";
-    const string RES_DIZZY = "FX/CFXR3 Magic Aura A (Runic)";
+    const string RES_DIZZY = "FX/Hovl Freeze AOE";           // 眩晕法宝（Hovl Studio 雪/冰冻 AoE）
     const string RES_HEAL = "FX/Hovl Heal";                    // 恢复血量（Hovl Studio 治疗光环）
     const string RES_BUILD = "FX/Hovl Build Dust";             // 修筑建筑（Hovl Studio 尘土）
     const string RES_DEMOLISH = "FX/Hovl Demolish Explosion";  // 拆除建筑（Hovl Studio 爆炸）
@@ -107,14 +107,14 @@ public static class FxFactory
     // 3×3 覆盖：1 格 = 1 世界单位，3×3 = 3 单位。
     // 炸弹范围缩小为原来的 1/2（1.8 → 0.9）。
     const float BOMB_SCALE = 0.9f;
-    const float DIZZY_SCALE = 1.8f;
+    const float DIZZY_SCALE = 0.4f;
     const float BOMB_DURATION = 2.5f;   // 粒子播完后自动销毁
     const float HEAL_SCALE = 1.2f;
     const float BUILD_SCALE = 0.3f;
     const float BUILD_ALPHA = 0.5f;   // 尘土透明度系数（乘到粒子 startColor.alpha）
     const float HEAL_DURATION = 2.0f;
     const float BUILD_DURATION = 1.5f;
-    const float DEMOLISH_SCALE = 1.2f;
+    const float DEMOLISH_SCALE = 0.3f;
     const float DEMOLISH_DURATION = 1.5f;
     const float RUBBLE_SCALE = 1.2f;
     const float RUBBLE_DURATION = 1.5f;

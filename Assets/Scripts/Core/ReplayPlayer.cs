@@ -241,11 +241,9 @@ void OnRoundEntered(int n)
     {
         Log("kill", u.DisplayName + " 阵亡", u.teamType);
         if (u.view != null && u.IsBeast) u.view.TriggerDeath();
-        // 被摧毁特效：围墙 → 瓦砾炸开；防御塔/基地/野兽 → 爆炸
+        // 被摧毁特效：仅围墙 → 瓦砾炸开（其余单位不再播放爆炸）
         if (u.type == 5)
             FxFactory.PlayRubbleEffect(u.pos);
-        else if (u.IsBuilding || u.IsBeast)
-            FxFactory.PlayDemolishEffect(u.pos);
     }
 
     public void OnCommand(UnitState u, ReplayCommand c)
@@ -358,8 +356,19 @@ void OnRoundEntered(int n)
         }
         else if (item == "dizzyweapon")
         {
-            // 法阵持续 = 冻结回合数 × 每回合秒数：与机器人被冻结的回合数对齐，且随播放倍速缩放
-            FxFactory.PlayDizzyEffect(center, DIZZY_FREEZE_ROUNDS * RoundDur);
+            // 对范围内每个机器人单独播放冰冻特效（特效落在机器人的单位坐标上）
+            var targets = new HashSet<string>();
+            if (c.skillTargetPos != null)
+                foreach (var sp in c.skillTargetPos)
+                    targets.Add(sp.x + "," + sp.y);
+            foreach (var bu in engine.units.Values)
+            {
+                if (!bu.IsBeast || bu.dead || bu.dying) continue;
+                int gx = Mathf.RoundToInt(bu.pos.x + 20f);
+                int gy = Mathf.RoundToInt(bu.pos.z + 15.5f);
+                if (targets.Contains(gx + "," + gy))
+                    FxFactory.PlayDizzyEffect(bu.pos, DIZZY_FREEZE_ROUNDS * RoundDur);
+            }
         }
     }
 
