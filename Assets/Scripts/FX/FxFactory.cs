@@ -109,7 +109,7 @@ public static class FxFactory
     const float BOMB_SCALE = 0.9f;
     const float DIZZY_SCALE = 0.4f;
     const float BOMB_DURATION = 2.5f;   // 粒子播完后自动销毁
-    const float HEAL_SCALE = 1.2f;
+    const float HEAL_SCALE = 0.6f;
     const float BUILD_SCALE = 0.3f;
     const float BUILD_ALPHA = 0.5f;   // 尘土透明度系数（乘到粒子 startColor.alpha）
     const float HEAL_DURATION = 2.0f;
@@ -131,10 +131,10 @@ public static class FxFactory
         SpawnEffect(RES_DIZZY, center, DIZZY_SCALE, durationSeconds);
     }
 
-    /// <summary>恢复血量：Hovl Studio 治疗光环，在单位位置短暂播放。</summary>
-    public static void PlayHealEffect(Vector3 center)
+    /// <summary>恢复血量：Hovl Studio 治疗光环，在单位位置短暂播放；follow 非空时挂到单位下跟随移动。</summary>
+    public static void PlayHealEffect(Vector3 center, Transform follow = null)
     {
-        SpawnEffect(RES_HEAL, center, HEAL_SCALE, HEAL_DURATION);
+        SpawnEffect(RES_HEAL, center, HEAL_SCALE, HEAL_DURATION, 1f, follow);
     }
 
     /// <summary>修筑建筑：Hovl Studio 尘土，在建造位置短暂播放。</summary>
@@ -149,14 +149,14 @@ public static class FxFactory
         SpawnEffect(RES_DEMOLISH, center, DEMOLISH_SCALE, DEMOLISH_DURATION);
     }
 
-    /// <summary>围墙摧毁：瓦砾炸开，在围墙位置短暂播放。</summary>
-    public static void PlayRubbleEffect(Vector3 center)
+    /// <summary>围墙摧毁 / 矿石消失：瓦砾炸开，在坐标位置短暂播放。</summary>
+    public static void PlayRubbleEffect(Vector3 center, float scale = RUBBLE_SCALE, float duration = RUBBLE_DURATION)
     {
-        SpawnEffect(RES_RUBBLE, center, RUBBLE_SCALE, RUBBLE_DURATION);
+        SpawnEffect(RES_RUBBLE, center, scale, duration);
     }
 
-    /// <summary>统一从 Resources 加载 + 实例化 + 缩放 + 透明度 + 定时回收。</summary>
-    static void SpawnEffect(string resPath, Vector3 center, float scale, float duration, float alpha = 1f)
+    /// <summary>统一从 Resources 加载 + 实例化 + 缩放 + 透明度 + 定时回收；follow 非空时挂到目标下跟随。</summary>
+    static void SpawnEffect(string resPath, Vector3 center, float scale, float duration, float alpha = 1f, Transform follow = null)
     {
         var prefab = Resources.Load<GameObject>(resPath);
         if (prefab == null)
@@ -165,6 +165,13 @@ public static class FxFactory
             return;
         }
         var inst = Object.Instantiate(prefab, center, Quaternion.identity);
+        if (follow != null)
+        {
+            inst.transform.SetParent(follow, false);
+            inst.transform.localPosition = new Vector3(0f, 0.5f, 0f);
+            float ls = follow.lossyScale.x;
+            if (ls > 0.001f) scale /= ls;
+        }
         inst.transform.localScale = Vector3.one * scale;
         if (alpha < 1f)
         {

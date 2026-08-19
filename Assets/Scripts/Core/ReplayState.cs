@@ -65,6 +65,7 @@ public interface IReplayHost
     void OnTalk(UnitState u, string text);
     void OnNews(string text);
     void OnPhaseChange(int day, bool isNight);
+    void OnResourceDepleted(int x, int y, string resName);
 }
 
 /// <summary>
@@ -299,8 +300,11 @@ public class StateEngine
             var nr = new Dictionary<string, ReplayResource>();
             foreach (var res in next.resources) nr[res.x + "," + res.y] = res;
             foreach (var kv in pr)
-                if (kv.Value.resNum > 0 && !nr.ContainsKey(kv.Key))
+                if (!nr.ContainsKey(kv.Key))
+                {
                     host.Log("info", kv.Value.resName + "矿 @(" + kv.Value.x + "," + kv.Value.y + ") 枯竭");
+                    host.OnResourceDepleted(kv.Value.x, kv.Value.y, kv.Value.resName);
+                }
             foreach (var kv in nr)
                 if (!pr.ContainsKey(kv.Key))
                     host.Log("info", kv.Value.resName + "矿 刷新 @(" + kv.Value.x + "," + kv.Value.y + ")");

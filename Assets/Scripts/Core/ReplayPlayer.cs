@@ -320,12 +320,15 @@ void OnRoundEntered(int n)
                     // 工人/开拓者使用道具 → 头顶"使用 xx"徽标（与小贩/商店同款）
                     if (u.type == 6 || u.type == 7)
                         TryShowUseBadge(u, c.targetName);
-                    // 恢复类道具（生命药剂/围墙修复包）→ 单位位置播放恢复特效
+                    // 恢复类道具：生命药剂跟随角色移动；围墙修复包在围墙位置（不跟随）
                     string useItem = (c.targetName ?? "").ToLowerInvariant();
-                    if (useItem == "medicine" || useItem == "wallfixer")
+                    if (useItem == "medicine")
                     {
-                        Vector3 healPos = c.hasTarget ? wp : u.pos;
-                        FxFactory.PlayHealEffect(healPos);
+                        FxFactory.PlayHealEffect(u.pos, u.view != null ? u.view.transform : null);
+                    }
+                    else if (useItem == "wallfixer")
+                    {
+                        FxFactory.PlayHealEffect(wp, null);
                     }
                     break;
                 }
@@ -387,6 +390,12 @@ void OnRoundEntered(int n)
     {
         Log("info", (isNight ? "🌙 第" : "☀ 第") + day + "天 " + (isNight ? "黑夜降临" : "天亮"));
         // 光照统一由 DayNightController 管理，此处仅记录日志
+    }
+
+    /// <summary>矿石（石头/铁/铜）消失 → 在原坐标播放瓦砾破碎特效（短时长，只爆一下）。</summary>
+    public void OnResourceDepleted(int x, int y, string resName)
+    {
+        FxFactory.PlayRubbleEffect(engine.CellToWorld(x, y), 0.6f, 0.7f);
     }
 
     /// <summary>sell 有效且执行者在小贩周围一格内 → 徽标显示在执行者（worker/pioneer）头上。</summary>
