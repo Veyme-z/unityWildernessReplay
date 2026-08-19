@@ -234,7 +234,11 @@ void OnRoundEntered(int n)
             u.view = UnitView.Create(u, unitsRoot);
             u.view.SetAnimScale(0f);
         }
-        FxFactory.Ring(u.pos, new Color(1f, 0.79f, 0.3f, 0.9f));
+        // 幽灵白圈排查：野兽(11~14)登场不再播放出生光环（白色扩散圆环），
+        // 避免多回合机器人陆续登场时周期性闪现白圈；工人/开拓者等其余单位仍保留出生光环。
+        // 防御塔命中环(Tracer)走 TowerVisualController，不受影响。
+        if (!u.IsBeast)
+            FxFactory.Ring(u.pos, new Color(1f, 0.79f, 0.3f, 0.9f));
     }
 
     public void OnDie(UnitState u)
@@ -605,6 +609,6 @@ void OnRoundEntered(int n)
         var ctrl = SettlementPanelController.Create(
             p0Name, p0Result, p0Score, p1Name, p1Result, p1Score,
             () => { Destroy(_settlementOverlay); _settlementOverlay = null; Restart(); });
-        _settlementOverlay = ctrl.gameObject;
+        if (ctrl != null) _settlementOverlay = ctrl.gameObject;
     }
 }

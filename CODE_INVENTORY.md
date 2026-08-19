@@ -1,7 +1,7 @@
 # CODE_INVENTORY — WildernessReplay 可维护性盘点
 
-> 只读盘点产物，2026-08-13 生成。用途：为后续小步清理提供事实，不包含任何重构。
-> 范围：`Assets/Scripts/**`（27 个）+ `Assets/Editor/TowerPrefabBuilder.cs`（1 个）= **28 个项目脚本**。
+> 只读盘点产物，2026-08-13 生成，**2026-08-19 已随「删除 CreateFromCode 兜底 + 移除 UI emoji + 删 Legacy 旧资产」清理同步更新**（§1 行数、§3.6、§4 假设5、§5、§6、§7）。
+> 范围：`Assets/Scripts/**`（28 个）+ `Assets/Editor/TowerPrefabBuilder.cs`（1 个）= **29 个项目脚本**。
 > 第三方（KayKit / Low_Poly_Forest / Robots / CubeTowerDefense / Raygeas Shared Assets / ProjectAssets）不审计。
 
 ---
@@ -12,18 +12,18 @@
 
 | 路径 | 类型 | 行数 | 一句话职责 | 被谁引用 | 引用谁 | 风险标签 |
 |---|---|---|---|---|---|---|
-| Scripts/ReplayEntry.cs | MonoBehaviour | 199 | 入口：加载 replay→组装相机/灯光/场景/播放器/全部 UI | 无（RuntimeInitializeOnLoadMethod 自举） | ReplayParser、SceneBuilder、ReplayPlayer、CameraManager、DayNightController、4 个 UI Controller | 双轨（自动创建 vs 场景挂载） |
-| Scripts/Core/ReplayPlayer.cs | MonoBehaviour | 529 | 主控：回合推进/变速/Seek/插值/特效调度/结算/交易徽标 | ReplayEntry、4 个 UI Controller、UnitView/NpcFacing/TowerVisual（FindObjectOfType） | StateEngine、ReplayCameraRig、ResourceViewManager、EventLogPanelController、FxFactory、TradeBadge、SettlementPanelController、CameraManager | GodFile、坐标（硬编码徽标换算）、UI兜底 |
-| Scripts/Core/ReplayState.cs | static+class | 437 | StateEngine：Diff/出生死亡伤害推断/CellToWorld + UnitState/TeamStat/IReplayHost | ReplayPlayer、ResourceViewManager、CameraManager、HudController、NpcFacingController | ReplayModels | GodFile、坐标 |
+| Scripts/ReplayEntry.cs | MonoBehaviour | 294 | 入口：加载 replay→组装相机/灯光/场景/播放器/全部 UI | 无（RuntimeInitializeOnLoadMethod 自举） | ReplayParser、SceneBuilder、ReplayPlayer、CameraManager、DayNightController、4 个 UI Controller | 双轨（自动创建 vs 场景挂载） |
+| Scripts/Core/ReplayPlayer.cs | MonoBehaviour | 605 | 主控：回合推进/变速/Seek/插值/特效调度/结算/交易徽标 | ReplayEntry、4 个 UI Controller、UnitView/NpcFacing/TowerVisual（FindObjectOfType） | StateEngine、ReplayCameraRig、ResourceViewManager、EventLogPanelController、FxFactory、TradeBadge、SettlementPanelController、CameraManager | GodFile、坐标（硬编码徽标换算）、依赖 UI（结算面板） |
+| Scripts/Core/ReplayState.cs | static+class | 463 | StateEngine：Diff/出生死亡伤害推断/CellToWorld + UnitState/TeamStat/IReplayHost | ReplayPlayer、ResourceViewManager、CameraManager、HudController、NpcFacingController | ReplayModels | GodFile、坐标 |
 | Scripts/Core/ReplayParser.cs | static | 262 | JSONL 解析（容错） | ReplayEntry | MiniJson、ReplayModels | — |
 | Scripts/Core/ReplayModels.cs | class(纯数据) | 131 | replay 数据模型 | ReplayParser、ReplayState、ReplayPlayer | — | 疑似死代码（多字段未消费） |
 | Scripts/Core/PrefabRefs.cs | MonoBehaviour | 155 | Prefab 引用单例（Inspector→Resources 双轨） | UI Controller 的 Create | Resources | 双轨、疑似死代码（GetUnitPrefab/Has* 未用） |
 | Scripts/Core/MiniJson.cs | static | 172 | 零依赖 JSON 解析器 | ReplayParser | — | — |
-| Scripts/Scene/UnitView.cs | MonoBehaviour | 605 | 单位表现：Create/Configure/LateUpdate/动画/血条/选择圈/塔视觉挂载 | ReplayPlayer、TeamColorApplicator、NpcFacingController | TowerVisualController、MatLib、Pickable、TeamColorApplicator、NpcFacingController | GodFile、序列化脆弱（Find 按名）、重复实现（EstimateHeight/Width vs MeasureSize） |
+| Scripts/Scene/UnitView.cs | MonoBehaviour | 666 | 单位表现：Create/Configure/LateUpdate/动画/血条/选择圈/塔视觉挂载 | ReplayPlayer、TeamColorApplicator、NpcFacingController | TowerVisualController、MatLib、Pickable、TeamColorApplicator、NpcFacingController、UnitDebugOverlay（挂载） | GodFile、序列化脆弱（Find 按名）、重复实现（EstimateHeight/Width vs MeasureSize） |
 | Scripts/Scene/SceneBuilder.cs | static | 490 | 地形：草地/森林/围栏/水面/NPC站位 | ReplayEntry | MatLib、UnitViewSprite、Resources | GodFile、EditorOnly混入Runtime、坐标 |
-| Scripts/Scene/TowerVisualController.cs | MonoBehaviour | 524 | 防御塔视觉：炮塔转向/后坐力/粒子/Tracer/命中环 | UnitView | MatLib、ReplayPlayer | 重复实现（Smooth01）、疑似死代码（Flamethrower/RPG 未加载） |
+| Scripts/Scene/TowerVisualController.cs | MonoBehaviour | 563 | 防御塔视觉：炮塔转向/后坐力/粒子/Tracer/命中环 | UnitView | MatLib、ReplayPlayer | 重复实现（Smooth01）、疑似死代码（Flamethrower/RPG 未加载） |
 | Scripts/Scene/CameraManager.cs | MonoBehaviour | 483 | 自动导播：SmoothDamp+事件特写+震屏+景深(反射) | ReplayEntry、PlaybackControlPanelController、ReplayPlayer、ReplayCameraRig | StateEngine、ReplayCameraRig | 疑似死代码（景深反射可能无包失效） |
-| Scripts/Scene/ReplayCameraRig.cs | MonoBehaviour | 409 | 相机机位：Global/TeamA/TeamB/Free | ReplayEntry、PlaybackControlPanelController | CameraManager | 坐标（硬编码 CellToWorld）、疑似死代码（Focus 空、globalPositionOverride 覆盖 FitMap） |
+| Scripts/Scene/ReplayCameraRig.cs | MonoBehaviour | 412 | 相机机位：Global/TeamA/TeamB/Free | ReplayEntry、PlaybackControlPanelController | CameraManager | 坐标（硬编码 CellToWorld）、疑似死代码（Focus 空、globalPositionOverride 覆盖 FitMap） |
 | Scripts/Scene/DayNightController.cs | MonoBehaviour | 191 | 昼夜四阶段光照 | ReplayEntry | ReplayPlayer、Light、Camera | 昼夜、重复实现（Smooth01） |
 | Scripts/Scene/ResourceViewManager.cs | class | 167 | 矿石可视化：FBX 直载+材质+数量标签 | ReplayPlayer | SceneBuilder.OreRockModel、StateEngine、MatLib、FxFactory | — |
 | Scripts/Scene/MatLib.cs | static | 166 | 材质池+程序化贴图（圆环/圆角面板） | UnitView、SceneBuilder、FxFactory、TowerVisualController、TeamColorApplicator、UnitViewSprite | — | 重复实现（Smooth01 3参版） |
@@ -32,13 +32,14 @@
 | Scripts/Scene/TeamColorApplicator.cs | MonoBehaviour | 44 | 阵营色（现只染 SelRing，与 UnitView.ApplyRingColor 重复） | UnitView | MatLib | 重复实现、疑似死代码 |
 | Scripts/Scene/Pickable.cs | MonoBehaviour | 7 | 拾取标记 + view 字段 | UnitView（仅赋值） | — | 疑似死代码（view 从未被读） |
 | Scripts/Scene/Billboard.cs | MonoBehaviour | 12 | 面朝相机 | FxFactory、ResourceViewManager、TradeBadge、SceneBuilder | — | — |
-| Scripts/FX/FxFactory.cs | static+4个MB | 190 | 光束/光环/气泡/伤害数字 | ReplayPlayer、TradeBadge、ResourceViewManager | MatLib、Billboard | — |
-| Scripts/FX/TradeBadge.cs | MonoBehaviour | 153 | 交易徽标（头顶弹字） | ReplayPlayer | FxFactory、Billboard | — |
-| Scripts/UI/HudController.cs | MonoBehaviour | 182 | 顶部天数/昼夜/回合面板 | ReplayEntry | PrefabRefs、StateEngine | 昼夜、UI兜底 |
-| Scripts/UI/PlaybackControlPanelController.cs | MonoBehaviour | 383 | 底部双队+时间轴+控制按钮 | ReplayEntry | PrefabRefs、ReplayPlayer、CameraManager、ReplayCameraRig | UI兜底、双轨（prefab/代码分叉，代码兜底缺人数标签） |
-| Scripts/UI/EventLogPanelController.cs | MonoBehaviour | 155 | 左侧事件日志 | ReplayEntry、ReplayPlayer | PrefabRefs | UI兜底 |
-| Scripts/UI/SettlementPanelController.cs | MonoBehaviour | 151 | 结算画面 | ReplayPlayer | PrefabRefs | UI兜底 |
-| Scripts/UI/TaskPanelController.cs | MonoBehaviour | 122 | 右侧任务面板（占位，**纯代码、无 Prefab 路径**） | ReplayEntry | ReplayPlayer | UI兜底、疑似死代码（占位内容） |
+| Scripts/FX/FxFactory.cs | static+4个MB | 269 | 光束/光环/气泡/伤害数字 | ReplayPlayer、TradeBadge、ResourceViewManager | MatLib、Billboard | — |
+| Scripts/FX/TradeBadge.cs | MonoBehaviour | 224 | 交易徽标（头顶弹字） | ReplayPlayer | FxFactory、Billboard | — |
+| Scripts/UI/HudController.cs | MonoBehaviour | 87 | 顶部天数/昼夜/回合面板 | ReplayEntry | PrefabRefs、StateEngine | 昼夜 |
+| Scripts/UI/PlaybackControlPanelController.cs | MonoBehaviour | 285 | 底部双队+时间轴+控制按钮（prefab 驱动；AddDirectorUI 动态加手动/自动按钮，WireCallbacks 按名接线；静态 ShowUnitStats 全局调试开关） | ReplayEntry、UnitDebugOverlay（读静态开关） | PrefabRefs、ReplayPlayer、CameraManager、ReplayCameraRig | 依赖 prefab（缺 prefab 时 Create 报错返回 null） |
+| Scripts/UI/EventLogPanelController.cs | MonoBehaviour | 75 | 左侧事件日志 | ReplayEntry、ReplayPlayer | PrefabRefs | 依赖 prefab |
+| Scripts/UI/SettlementPanelController.cs | MonoBehaviour | 72 | 结算画面 | ReplayPlayer | PrefabRefs | 依赖 prefab |
+| Scripts/UI/TaskPanelController.cs | MonoBehaviour | 118 | 右侧任务面板（占位，**纯代码、无 Prefab 路径**） | ReplayEntry | ReplayPlayer | 疑似死代码（占位内容） |
+| Scripts/UI/UnitDebugOverlay.cs | MonoBehaviour | 139 | 单位头顶调试悬浮文字（[ID\|坐标\|HP\|攻击力]；围墙/野兽内部过滤；受 PlaybackControlPanelController.ShowUnitStats 全局开关） | UnitView（ConfigureFromUnitPrefab 挂载） | UiFonts、Billboard、PlaybackControlPanelController（静态开关） | 依赖全局静态开关（默认 false，未显示时零渲染） |
 | Editor/TowerPrefabBuilder.cs | static | 124 | 编辑器工具：生成 6 个塔视觉包装 Prefab | 菜单 Tools/WildernessReplay | AssetDatabase、TowerVisualController | EditorOnly（正常） |
 
 第三方但位于 Assets 下、**不审计**：`Assets/Raygeas/Shared Assets/Scripts/*`（6 个，环境素材包自带的 PlayerController/Interactive 等）。
@@ -162,14 +163,11 @@ Load():
   - 实测 replay.txt：`resName` 为**中文**（石头/铁/铜），`targetName` 为**英文**（copper）→ 两条映射各自正确，但命名约定不统一。
 - **建议**：保留现状，仅建议在 ReplayParser 注释中明确「资源名=中文、物品名=英文」，避免未来新增物品时踩坑。
 
-### 3.6 CreateFromCode 与 Prefab 路径内容分叉
+### 3.6 CreateFromCode 与 Prefab 路径内容分叉 —— 已消除（2026-08-19）
 
-- **事实**：4 个 UI Controller 都有 `Create`（Prefab 优先）+ `CreateFromCode` 双轨；分叉点如下。
-- **证据**：
-  - `PlaybackControlPanelController`：prefab 有 `TeamBar/RedCard|BlueCard` 分组 + `RMm/BMm`（人数 0/3）节点，`ResolveTextRefs` 按名解析，**人数在 prefab 路径正常显示**；代码兜底路径直接平铺 TeamBar 子项、**缺「人数」RMm/BMm**（`_redMember/_blueMember` 恒 null）。`PlaybackControlPanelController.cs:171-194, 275-287`
-  - `HudController`：代码路径自建 Day/Phase/Round 标签并赋 `_currentDayColor` 初值，prefab 路径沿用 prefab 初值。`HudController.cs:29-45`
-  - `TaskPanelController`：**无 Prefab 路径**，纯代码（与另外 4 个不一致）。`TaskPanelController.cs:33`
-- **建议**：需要产品确认是否保留「Prefab 缺失也能跑」承诺；若要，改动样式后必须同步维护 CreateFromCode（HUD_UI_AUDIT §7 已指出）。
+- **事实**：原 4 个 UI Controller（Hud/EventLog/Playback/Settlement）都有 `Create`（Prefab 优先）+ `CreateFromCode` 纯代码兜底双轨。**2026-08-19 已全部删除兜底**：`Create()` 缺 prefab 直接 `Debug.LogError` 并返回 null（ReplayEntry/ReplayPlayer 调用处已补 null 保护），不再有纯代码 UI 路径。
+- **现状**：5 个 UI 面板中 4 个（Hud/EventLog/Playback/Settlement）纯 prefab 驱动；`TaskPanelController` 仍是**唯一纯代码、无 prefab 路径**的面板，与其余不一致。
+- **建议**：后续新增面板统一 prefab 驱动（PrefabRefs 序列化引用 + `UiFonts.Apply` + 按名接线）；如需把 TaskPanel 也改成 prefab，参考其余 4 个的 `Create`。
 
 ### 3.7 TeamColorApplicator 现在还改不影响 SelRing 的东西吗
 
@@ -232,9 +230,9 @@ Load():
 
 ### 假设 5 — PrefabRefs 四个 UI 引用是否为空：非空，走 Prefab 路径
 - **触发条件**：UI 创建。
-- **证据**：`unknow.unity` 中 `hudPanelPrefab/eventLogPanelPrefab/playbackControlPanelPrefab/settlementPanelPrefab` 均有 GUID（`unknow.unity:347-350`）；4 个 Prefab 存在于 `Assets/Prefabs/UI/`。→ `Get*Prefab` 返回序列化引用，不落 Resources 兜底。
+- **证据**：`unknow.unity` 中 `hudPanelPrefab/eventLogPanelPrefab/playbackControlPanelPrefab/settlementPanelPrefab` 均有 GUID（`unknow.unity:347-350`）；4 个 Prefab 存在于 `Assets/Prefabs/UI/`。→ `Get*Prefab` 返回序列化引用（**不再有 `Resources.Load` 兜底**；`Create()` 缺 prefab 时 `Debug.LogError` 并返回 null，调用处已判空）。
 - **严重度**：无。
-- **验证**：Play，UI 出现即为 Prefab 路径（若走代码兜底会有 `Debug.LogWarning` 提示）。
+- **验证**：Play，UI 出现即为 Prefab 路径；若某个 prefab 引用断掉，Console 会出现 `[xxxController] 缺少 xxx prefab` 的 LogError。
 
 ### 假设 6 — OfficerNPC/VendorNPC Animator.controller 是否为空：非空（文档已过时）
 - **触发条件**：NPC 实例化。
@@ -277,7 +275,7 @@ Load():
 | 文档过时（描述与实现不符） | PROJECT_STATE §二 `NpcFacingController`「命令优先级 (executeTask/submitAnswer/sell) + Smooth01 八方向水平旋转」 | 实际 `RefreshTarget` 只按切比雪夫距离 `dist==1` 检测来访者，无命令优先级、无 8 方向、无 Smooth01（用 `Quaternion.RotateTowards` 连续转）`NpcFacingController.cs:82-111`；`ReplayPlayer.roundActions` 正是为此预留但从未被读 |
 | 文档过时 | PROJECT_STATE §二 `ResourceViewManager`「3D 球体 + 物理 .mat 材质」 | 实际先 FBX（OreRockModel）直载，Sphere 是 fallback；§三/§六 已更正为 FBX，§二 一句话仍写「球体」 |
 | 代码有、文档没写 | `TeamStat.baseHp` 死字段 | HUD_UI_AUDIT §3 已点名「baseHp 不显示」，但 PROJECT_STATE 未把它列入死代码 |
-| 文档过时 | HUD_UI_AUDIT §1「角色数量 ❌ 未显示」 | 该结论已过时：prefab 已含 `RMm/BMm`（`m_Text:"人数 0/3"`），`Sync` 的 `_redMember/_blueMember` 在 prefab 路径**正常显示人数**；仅 `CreateFromCode` 兜底路径缺该标签 |
+| ~~文档过时~~（已修 08-19） | ~~HUD_UI_AUDIT §1「角色数量 ❌ 未显示」~~ | 已解决：prefab 含 `RMm/BMm`（人数正常显示），HUD_UI_AUDIT §1/§8 已更正；唯一缺人数标签的 `CreateFromCode` 兜底已删除 |
 | 文档有、代码没有 | HUD_UI_AUDIT §0「单位/建筑字段均为 {fileID:0}」 | `unknow.unity:331` 显示 `unitBasePrefab` **非空**（有 GUID）；文档未误，但未说明 unitBasePrefab 非空却永不加载（`GetUnitPrefab` 未用） |
 | 一致 | HUD_UI_AUDIT §5「panel_frame.png 未被引用」 | 代码零引用，已核实 ✅ |
 | 一致 | PROJECT_STATE §四「坐标 (x-20,0,y-15.5)」 | 与 StateEngine.CellToWorld 一致 ✅ |
@@ -289,7 +287,7 @@ Load():
 1. **UnitView 的序列化/prefab 依赖**：`_body/_hpFill/_selRing` 全靠 `transform.Find("Body"/"Visual"/"HpFill")` 按名查找，`strideCoefficient` 是 [SerializeField]；动 `UnitView` 的创建路由或字段会连锁破坏 Worker/Pioneer/NPC/Beast 多个 prefab 的运行时装配，且「改坏了只在 Play Mode 才暴露」。
 2. **Prefab GUID 链**：`unknow.unity → 4 个 UI prefab`、`Beast_XX → Robot Nested Prefab`、`CubeTowers/Tower_* → ProjectAssets 源塔` 三层 GUID 引用。任何一条断掉都**静默回退**到代码路径或空引用，无编译报错。
 3. **双相机并存**：`ReplayCameraRig`（机位/Free 输入）与 `CameraManager`（Auto 导播）同时写 `Camera.main`，Auto/Manual 切换靠 `SetSpectatorMode` + `enableAutoLock` 协调；重构任何一边都要两处一起验证。
-4. **UI 双轨**：Prefab 与 CreateFromCode 已分叉（§3.6），合并任何一条都意味着另一条同步改，否则「Prefab 缺失兜底」与正式视觉不一致。
+4. **UI 双轨**：~~Prefab 与 CreateFromCode 已分叉~~（2026-08-19 已删除全部 `CreateFromCode`，UI 纯 prefab 驱动，分叉风险消除；`TaskPanel` 是唯一纯代码面板）。
 5. **SceneBuilder 的 KayKit scale=100 / -90° 修正**：`if (treePrefab.transform.localScale.x > 50f)` 这类魔数 + FBX 原生旋转修正，删改很容易让树/围栏/矿石翻倒或缩放失控。
 6. **阵营色常量散落**：统一常量看似无害，但柔和/霓虹两套色系已各自被 UI prefab 文本色和世界空间特效分别使用，合并可能悄悄改变视觉。
 
@@ -311,12 +309,12 @@ Load():
    - 禁止改：`TowerVisualController.cs`、各 prefab 的 HP 条节点。
    - 验收：带粒子的单位 HP 条不再异常宽高；塔 HP 条无回归。
 
-4. **让 `CreateFromCode` 兜底补上「人数」标签（与 prefab 对齐）**
-   - 改：`Assets/Scripts/UI/PlaybackControlPanelController.cs` 的 `CreateFromCode`，在 TeamBar 补 `RMm/BMm`（人数）文本并赋给 `_redMember/_blueMember`（prefab 路径已正常显示，仅代码兜底缺）。
-   - 禁止改：`PlaybackControlPanel.prefab`、其他 UI prefab；不要动 TeamBar 现有布局。
-   - 验收：走代码兜底路径时底部面板仍显示「人数 x/3」；prefab 路径无回归。
+4. ✅ **已随「删除 CreateFromCode 兜底」解决（2026-08-19）**
+   - 原建议让代码兜底补「人数」标签；兜底已整体删除（`PlaybackControlPanelController` 不再有 `CreateFromCode`），面板一律走 prefab 路径，`RMm/BMm` 人数正常显示，该建议失效。
 
-5. **删除确认未加载的 Prefab/资源（需产品确认后分批）**
-   - 改：删除 `Resources/Prefabs/Environment/Trees/`、`Bushes/`、`CubeTowers/Tower_Flamethrower_*`、`Tower_RPG_*`、`Legacy/Tower_Legacy.prefab`、`Resources/UITheme/panel_frame.png`。
-   - 禁止改：`CubeTowers/Tower_Minigun_Red/Blue.prefab`、`Buildings/Tower.prefab`、任何 .cs 里的 `Resources.Load` 路径（先确认无字符串引用）。
-   - 验收：删除后全局搜索无 `Environment/Trees`、`Bushes`、`Tower_Flamethrower`、`Tower_RPG`、`Tower_Legacy`、`panel_frame` 引用；Play 全流程（含塔开火、地形、结算）无 Missing 报错。
+5. **删除确认未加载的 Prefab/资源（部分完成 2026-08-19，其余待产品确认）**
+   - 已删（2026-08-19）：`Assets/Prefabs/UI/Legacy/`（`HudPanel_Legacy`、`PlaybackControlPanel_Legacy`）。
+   - **保留**：`Legacy/Tower_Legacy.prefab` 是 `TowerPrefabBuilder` 的备份产物（菜单工具会生成/覆盖），非死代码，不删。
+   - 待确认：`Resources/Prefabs/Environment/Trees/`、`Bushes/`、`CubeTowers/Tower_Flamethrower_*`、`Tower_RPG_*`、`Resources/UITheme/panel_frame.png`。
+   - 禁止改：`CubeTowers/Tower_Minigun_Red/Blue.prefab`、`Buildings/Tower.prefab`、任何 .cs 里的 `Resources.Load` 路径。
+   - 验收：删除后全局搜索无 `Environment/Trees`、`Bushes`、`Tower_Flamethrower`、`Tower_RPG`、`panel_frame` 引用；Play 全流程无 Missing 报错。

@@ -102,11 +102,12 @@ public class StateEngine
         return new Vector3(gameX - ox, 0f, gameY - oz);
     }
 
-    /// <summary>单位世界坐标。基地(2×2)居中偏移 +0.5 格。</summary>
+    /// <summary>单位世界坐标。基地(2×2)居中：锚点 (x,y) 是其左上角格（占地 x..x+1, y-1..y），
+    /// 中心 = 左下角格 + (0.5, 0, -0.5) 即 +x/2、-y/2。</summary>
     public Vector3 UnitWorldPos(int x, int y, int roleType)
     {
         var wp = CellToWorld(x, y);
-        if (roleType == 4) wp += new Vector3(0.5f, 0f, 0.5f);  // 基地占 2×2，视觉居中
+        if (roleType == 4) wp += new Vector3(0.5f, 0f, -0.5f);  // 基地 2×2 视觉居中
         return wp;
     }
 

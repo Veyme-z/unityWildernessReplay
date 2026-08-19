@@ -193,7 +193,7 @@ public class ReplayEntry : MonoBehaviour
 
             // ---- 左侧事件日志面板 ----
             var eventLog = EventLogPanelController.Create(player);
-            player.SetEventLog(eventLog);
+            if (eventLog != null) player.SetEventLog(eventLog);
 
             // ---- 底部双队面板 + 时间轴 + 播放控制 ----
             PlaybackControlPanelController.Create(player);

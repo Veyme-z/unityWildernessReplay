@@ -2,8 +2,24 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// 底部面板：竖向三段式 — 双队数据（相邻）→ 时间轴 → 控制按钮。
-/// 独立 Canvas，与 HudController/EventLogPanelController 模式一致。
+/// 底部播放控制面板：双队数据栏 + 时间轴 + 播放/镜头/导播按钮。独立 Canvas（sortingOrder 220）。
+///
+/// ═══ 架构：Prefab 是真源，代码只做运行时接线（后续改面板先看这） ═══
+/// 1. 结构/布局/静态颜色/字号/标签文案 全在 Assets/Prefabs/UI/PlaybackControlPanel.prefab。
+///    场景 unknow.unity 的 PrefabRefs.playbackControlPanelPrefab 按 GUID 引用它；prefab 缺失时 Create()
+///    直接 LogError 并返回 null（旧的 CreateFromCode 纯代码兜底已删除）。
+/// 2. Create(player) 实例化 prefab 后依次执行（顺序有依赖）：
+///      UiFonts.Apply     —— 统一替换所有 Text 字体为 NotoSansSC（覆盖 prefab 烘焙字体）
+///      AddDirectorUI()   —— 动态追加「手动/自动」按钮 + DirectorStatus 指示灯（prefab 里没有）
+///      WireCallbacks()   —— 按名字查找接线：Slider/Play/Restart/Sp1/Sp2/CamGlobal/CamA/CamB/CamFree/手动/自动
+///      ResolveTextRefs() —— 按名字重解析队伍文本（TeamBar/RedCard|BlueCard/*），防序列化引用失效
+///      Sync(player)      —— 立即填充一次数据
+/// 3. Update() 每帧调 Sync()（轮询式直读 engine 现场，非事件驱动）；拖时间轴会先 SetPlaying(false) 再 JumpTo。
+/// 4. 代码运行时覆盖点：全部文本内容、Play/Speed/Manual/Auto 按钮底色、字体。
+///    其余（布局、字号、静态颜色、按钮标签）来自 prefab，改样式直接改 prefab。
+/// 5. 当前状态（2026-08）：镜头按钮 = 全局/CamGlobal · 蓝方/CamA · 红方/CamB · 自由/CamFree，
+///    与键盘 1/2/3/4 对应（见 ReplayCameraRig）。ControlBar 680 宽 + HorizontalLayoutGroup 自动排布；
+///    TeamBar 用 HorizontalLayoutGroup 排 RedCard/BlueCard 两张队伍卡。已按需求移除全部 emoji。
 /// </summary>
 public class PlaybackControlPanelController : MonoBehaviour
 {
@@ -19,6 +35,10 @@ public class PlaybackControlPanelController : MonoBehaviour
     int _totalRounds;
     ReplayPlayer _player;
 
+    /// <summary>全局调试开关：单位头顶实时显示 ID/坐标/HP/攻击力（默认关闭，点击「显示」按钮取反）。</summary>
+    public static bool ShowUnitStats = false;
+    [SerializeField] Button _showStatsBtn;   // 「显示」调试切换按钮（prefab ControlBar 内，WireCallbacks 按名接线）
+
     static Font Fn()
     {
         return UiFonts.Get();
@@ -26,29 +46,27 @@ public class PlaybackControlPanelController : MonoBehaviour
 
     public static PlaybackControlPanelController Create(ReplayPlayer player)
     {
-        // 优先使用 prefab（如果有配置），否则退回纯代码创建
+        // prefab 是真源：场景 PrefabRefs 按 GUID 引用，缺失即报错（不再有纯代码兜底）
         var prefab = PrefabRefs.Instance.GetPlaybackControlPrefab();
-        PlaybackControlPanelController ctrl;
-        if (prefab != null)
+        if (prefab == null)
         {
-            var go = Object.Instantiate(prefab);
-            UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
-            ctrl = go.GetComponentInChildren<PlaybackControlPanelController>();
-            if (ctrl == null) ctrl = go.AddComponent<PlaybackControlPanelController>();
-            ctrl._player = player;
-            ctrl.AddDirectorUI(go.transform);  // 先创建导演模式 UI
-            ctrl.WireCallbacks(player);        // 再连线回调
-            ctrl.ResolveTextRefs();           // 按名字解析文本引用（避免序列化引用失效）
-            ctrl._totalRounds = player.TotalRounds;
-            ctrl.Sync(player);
-            return ctrl;
+            Debug.LogError("[PlaybackControlPanelController] 缺少 PlaybackControlPanel prefab（请检查场景 PrefabRefs.playbackControlPanelPrefab），面板未创建。");
+            return null;
         }
-        Debug.LogWarning("[PlaybackControlPanelController] PlaybackControlPanel prefab 缺失，回退到代码创建 UI（请检查场景 PrefabRefs 或 Resources/Prefabs/UI/PlaybackControlPanel）。");
-        ctrl = CreateFromCode(player);
+        var go = Object.Instantiate(prefab);
+        UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
+        var ctrl = go.GetComponentInChildren<PlaybackControlPanelController>();
+        if (ctrl == null) ctrl = go.AddComponent<PlaybackControlPanelController>();
+        ctrl._player = player;
+        ctrl.AddDirectorUI(go.transform);  // 先创建导演模式 UI
+        ctrl.WireCallbacks(player);        // 再连线回调
+        ctrl.ResolveTextRefs();           // 按名字解析文本引用（避免序列化引用失效）
+        ctrl._totalRounds = player.TotalRounds;
+        ctrl.Sync(player);
         return ctrl;
     }
 
-    /// <summary>动态创建导演模式按钮 + 状态指示灯（prefab 路径和代码路径共用）</summary>
+    /// <summary>动态创建导演模式按钮 + 状态指示灯（「手动/自动」按钮由代码动态创建，prefab 里没有）</summary>
     void AddDirectorUI(Transform canvasRoot)
     {
         var f = Fn();
@@ -129,6 +147,10 @@ public class PlaybackControlPanelController : MonoBehaviour
             var camFreeBtn = btnBar.Find("CamFree")?.GetComponent<Button>();
             if (camFreeBtn != null) camFreeBtn.onClick.AddListener(() => camRig?.SetCameraMode("free"));
 
+            // 「显示」调试切换按钮（点击取反全局开关，Update 里高亮）
+            var showStatsBtn = btnBar.Find("Btn_ShowStats")?.GetComponent<Button>();
+            if (showStatsBtn != null) { showStatsBtn.onClick.AddListener(() => ShowUnitStats = !ShowUnitStats); _showStatsBtn = showStatsBtn; }
+
             // 智能导播模式按钮
             var manBtn = btnBar.Find("Btn_ModeManual")?.GetComponent<Button>();
             if (manBtn != null) { manBtn.onClick.AddListener(() => CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Manual)); _btnManual = manBtn; }
@@ -140,139 +162,9 @@ public class PlaybackControlPanelController : MonoBehaviour
         if (statusGo != null) { _directorStatus = statusGo.GetComponent<Text>(); statusGo.gameObject.SetActive(false); }
     }
 
-    static PlaybackControlPanelController CreateFromCode(ReplayPlayer player)
-    {
-        var f = Fn();
-        Color bg = new Color(0.102f, 0.102f, 0.118f, 0.85f);
-        Color blue = new Color(0, 0.478f, 1f);
-        Color grey = new Color(0.35f, 0.35f, 0.40f);
 
-        // ── 独立 Canvas ──
-        var canvasGo = new GameObject("BottomCanvas");
-        var c = canvasGo.AddComponent<Canvas>(); c.renderMode = RenderMode.ScreenSpaceOverlay; c.sortingOrder = 220;
-        var s = canvasGo.AddComponent<CanvasScaler>(); s.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        s.referenceResolution = new Vector2(1920, 1080); s.matchWidthOrHeight = 0.5f;
-        canvasGo.AddComponent<GraphicRaycaster>();
 
-        var ctrl = canvasGo.AddComponent<PlaybackControlPanelController>();
-        ctrl._player = player;
-
-        // ══════ 自上而下 y 坐标 ══════
-        // y=110: 双队面板（两队相邻在同一栏）
-        // y=55:  时间轴
-        // y=0:   控制按钮
-
-        // ── 双队面板（一条 bar，两队相邻，四行数据） ──
-        var teamBar = Bar(canvasGo.transform, "TeamBar", 0, 108, 700, 116, bg);
-        // 红队（左半）— 第一行
-        ctrl._redName  = Lbl(teamBar.transform, "RN", "🔴 ---", 14, 8, -6, 160, 22, new Color(0.94f,0.34f,0.28f), f, TextAnchor.MiddleLeft);
-        ctrl._redHp    = Lbl(teamBar.transform, "RH", "❤ ---", 13, 8, -28, 80, 20, new Color(0.94f,0.42f,0.38f), f, TextAnchor.MiddleLeft);
-        ctrl._redGold  = Lbl(teamBar.transform, "RG", "💰 --- 金币", 13, 100, -28, 120, 20, new Color(0.96f,0.78f,0.22f), f, TextAnchor.MiddleLeft);
-        ctrl._redScore = Lbl(teamBar.transform, "RS", "🏆 --- 积分", 13, 230, -28, 120, 20, Color.white, f, TextAnchor.MiddleLeft);
-        // 红队 — 第二行（塔/墙）
-        ctrl._redTower = Lbl(teamBar.transform, "RTw", "🗼 ---", 12, 8, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        ctrl._redWall  = Lbl(teamBar.transform, "RWl", "🧱 ---", 12, 100, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        // 红队 — 第三行（任务对错，宽展）
-        ctrl._redTask  = Lbl(teamBar.transform, "RTk", "尚未接受任务", 12, 8, -72, 340, 20, new Color(0.82f,0.76f,0.5f), f, TextAnchor.MiddleLeft);
-        // 红队 — 第四行（背包，宽展）
-        ctrl._redBag   = Lbl(teamBar.transform, "RBg", "🎒 ---", 12, 8, -94, 340, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        // 分隔线
-        var div = new GameObject("Div"); div.transform.SetParent(teamBar.transform, false);
-        var drt = div.AddComponent<RectTransform>(); drt.anchorMin=new Vector2(0.5f,0.1f); drt.anchorMax=new Vector2(0.5f,0.9f);
-        drt.sizeDelta=new Vector2(1,0); drt.anchoredPosition=Vector2.zero;
-        div.AddComponent<Image>().color=new Color(0.3f,0.3f,0.35f);
-        // 蓝队（右半）— 第一行
-        ctrl._blueName  = Lbl(teamBar.transform, "BN", "🔵 ---", 14, 362, -6, 160, 22, new Color(0.28f,0.62f,0.96f), f, TextAnchor.MiddleLeft);
-        ctrl._blueHp    = Lbl(teamBar.transform, "BH", "❤ ---", 13, 362, -28, 80, 20, new Color(0.94f,0.42f,0.38f), f, TextAnchor.MiddleLeft);
-        ctrl._blueGold  = Lbl(teamBar.transform, "BG", "💰 --- 金币", 13, 454, -28, 120, 20, new Color(0.96f,0.78f,0.22f), f, TextAnchor.MiddleLeft);
-        ctrl._blueScore = Lbl(teamBar.transform, "BS", "🏆 --- 积分", 13, 584, -28, 120, 20, Color.white, f, TextAnchor.MiddleLeft);
-        // 蓝队 — 第二行
-        ctrl._blueTower = Lbl(teamBar.transform, "BTw", "🗼 ---", 12, 362, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        ctrl._blueWall  = Lbl(teamBar.transform, "BWl", "🧱 ---", 12, 454, -50, 80, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-        // 蓝队 — 第三行（任务对错，宽展）
-        ctrl._blueTask  = Lbl(teamBar.transform, "BTk", "尚未接受任务", 12, 362, -72, 340, 20, new Color(0.82f,0.76f,0.5f), f, TextAnchor.MiddleLeft);
-        // 蓝队 — 第四行（背包，宽展）
-        ctrl._blueBag   = Lbl(teamBar.transform, "BBg", "🎒 ---", 12, 362, -94, 340, 20, new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleLeft);
-
-        // ── 时间轴 ──
-        var tlBar = Bar(canvasGo.transform, "TimelineBar", 0, 55, 0, 50, bg);
-        tlBar.GetComponent<RectTransform>().anchorMin = new Vector2(0.1f, 0);
-        tlBar.GetComponent<RectTransform>().anchorMax = new Vector2(0.9f, 0);
-        tlBar.GetComponent<RectTransform>().sizeDelta = new Vector2(0, 50);
-        ctrl._roundText = LblA(tlBar.transform, "RT", "0 / 0 回合", 0.5f, 1, 0.5f, 1, 13, 0, -4, 200, 20,
-                                new Color(0.75f,0.73f,0.68f), f, TextAnchor.MiddleCenter);
-        var slGo = new GameObject("Slider"); slGo.transform.SetParent(tlBar.transform, false);
-        var slRt = slGo.AddComponent<RectTransform>();
-        slRt.anchorMin=new Vector2(0,0.5f); slRt.anchorMax=new Vector2(1,0.5f);
-        slRt.pivot=new Vector2(0.5f,0.5f); slRt.anchoredPosition=Vector2.zero; slRt.sizeDelta=new Vector2(-40,20);
-        ctrl._slider = slGo.AddComponent<Slider>();
-        ctrl._slider.minValue=1; ctrl._slider.maxValue=1; ctrl._slider.value=1;
-        ctrl._slider.onValueChanged.AddListener(ctrl.OnDrag);
-        // 轨道
-        var trk = Ch(slGo.transform,"T"); trk.AddComponent<Image>().color=new Color(0.2f,0.2f,0.22f);
-        var tr=trk.GetComponent<RectTransform>(); tr.anchorMin=new Vector2(0,0.3f); tr.anchorMax=new Vector2(1,0.7f);
-        tr.offsetMin=Vector2.zero; tr.offsetMax=Vector2.zero;
-        // 填充
-        var fl = Ch(slGo.transform,"F"); fl.AddComponent<Image>().color=blue;
-        var fr=fl.GetComponent<RectTransform>(); fr.anchorMin=new Vector2(0,0.3f); fr.anchorMax=new Vector2(1,0.7f);
-        fr.offsetMin=Vector2.zero; fr.offsetMax=Vector2.zero;
-        // 手柄
-        var hd = Ch(slGo.transform,"H"); hd.AddComponent<Image>().color=new Color(1,1,1,0.5f);
-        var hr=hd.GetComponent<RectTransform>(); hr.anchorMin=new Vector2(0,0); hr.anchorMax=new Vector2(0,1);
-        hr.pivot=new Vector2(0.5f,0.5f); hr.sizeDelta=new Vector2(14,14);
-        ctrl._slider.fillRect=fr; ctrl._slider.handleRect=hr; ctrl._slider.targetGraphic=hd.GetComponent<Image>();
-
-        // ── 控制按钮 ──
-        var btnBar = Bar(canvasGo.transform, "ControlBar", 0, 0, 284, 50, bg);
-        btnBar.GetComponent<RectTransform>().anchorMin = new Vector2(0.5f, 0);
-        btnBar.GetComponent<RectTransform>().anchorMax = new Vector2(0.5f, 0);
-        btnBar.GetComponent<RectTransform>().sizeDelta = new Vector2(420, 50);
-        float bx = -120;
-        var pb = Btn(btnBar.transform,"Play","▶",f,bx,64,38,blue, ()=>player.TogglePlay(),22);
-        ctrl._playBtn=pb.btn; ctrl._playLabel=pb.label; bx+=72;
-        Btn(btnBar.transform,"Restart","↺",f,bx,52,34,grey, ()=>{player.Restart(); ctrl._totalRounds=player.TotalRounds;}); bx+=60;
-        var s1=Btni(btnBar.transform,"Sp1","1x",f,bx,52,34,blue, ()=>player.SetSpeed(2));
-        ctrl._speed1Btn=s1.btn; bx+=60;
-        var s2=Btni(btnBar.transform,"Sp2","2x",f,bx,52,34,grey, ()=>player.SetSpeed(3));
-        ctrl._speed2Btn=s2.btn; bx+=60;
-
-        // 镜头按钮：🌐全局  🔴A队  🔵B队
-        var camRig = Camera.main != null ? Camera.main.GetComponent<ReplayCameraRig>() : null;
-        Color camBtnBg = new Color(0.22f, 0.22f, 0.28f);
-        Btn(btnBar.transform,"CamGlobal","🌐",f,bx,24,24,camBtnBg, ()=>{ camRig?.SetCameraMode("global"); }, 12); bx+=30;
-        Btn(btnBar.transform,"CamA","🔴",f,bx,24,24,camBtnBg, ()=>{ camRig?.SetCameraMode("teamA"); }, 12); bx+=30;
-        Btn(btnBar.transform,"CamB","🔵",f,bx,24,24,camBtnBg, ()=>{ camRig?.SetCameraMode("teamB"); }, 12); bx+=40;
-
-        // ── 智能导播模式按钮 ──
-        var manBtn = Btn(btnBar.transform,"Btn_ModeManual","🎥M",f,bx,32,24,new Color(0.3f,0.55f,0.3f), ()=>{
-            CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Manual);
-        }, 12); bx+=38;
-        var autoBtn = Btn(btnBar.transform,"Btn_ModeAuto","🤖A",f,bx,32,24,new Color(0.55f,0.25f,0.2f), ()=>{
-            CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Auto);
-        }, 12); bx+=38;
-        Btn(btnBar.transform,"CamFree","🆓",f,bx,28,24,camBtnBg, ()=>{ camRig?.SetCameraMode("free"); }, 12); bx+=40;
-        ctrl._btnManual = manBtn.btn;
-        ctrl._btnAuto = autoBtn.btn;
-
-        // ── 导演模式状态指示灯 ──
-        var statusGo = new GameObject("DirectorStatus"); statusGo.transform.SetParent(canvasGo.transform, false);
-        var srt = statusGo.AddComponent<RectTransform>();
-        srt.anchorMin = new Vector2(0.5f, 1); srt.anchorMax = new Vector2(0.5f, 1);
-        srt.pivot = new Vector2(0.5f, 1); srt.anchoredPosition = new Vector2(0, -72);
-        srt.sizeDelta = new Vector2(320, 28);
-        var st = statusGo.AddComponent<Text>();
-        st.text = "智能导演进行中"; st.font = f; st.fontSize = 16;
-        st.alignment = TextAnchor.MiddleCenter; st.color = new Color(1f, 0.25f, 0.2f);
-        st.raycastTarget = false;
-        statusGo.SetActive(false);
-        ctrl._directorStatus = st;
-
-        ctrl._totalRounds = player.TotalRounds;
-        ctrl.Sync(player);
-        return ctrl;
-    }
-
-    /// <summary>按名字解析文本引用（prefab 与代码创建通用，避免序列化引用失效）</summary>
+    /// <summary>按名字解析文本引用（prefab 实例化后重解析，避免序列化引用失效）</summary>
     void ResolveTextRefs()
     {
         var red  = transform.Find("TeamBar/RedCard");
@@ -384,13 +276,10 @@ public class PlaybackControlPanelController : MonoBehaviour
             _btnManual.GetComponent<Image>().color = auto ? new Color(0.35f, 0.35f, 0.40f) : new Color(0.3f, 0.55f, 0.3f);
             _btnAuto.GetComponent<Image>().color = auto ? new Color(0.75f, 0.3f, 0.2f) : new Color(0.35f, 0.35f, 0.40f);
         }
+
+        // 「显示」调试开关高亮（开启=琥珀色，关闭=默认暗底）
+        if (_showStatsBtn != null)
+            _showStatsBtn.GetComponent<Image>().color = ShowUnitStats ? new Color(0.85f, 0.6f, 0.1f) : new Color(0.22f, 0.22f, 0.28f);
     }
 
-    // ── helpers ──
-    static GameObject Bar(Transform p,string n,float x,float y,float w,float h,Color bg){var g=new GameObject(n);g.transform.SetParent(p,false);var r=g.AddComponent<RectTransform>();r.anchorMin=new Vector2(0.5f,0);r.anchorMax=new Vector2(0.5f,0);r.pivot=new Vector2(0.5f,0);r.anchoredPosition=new Vector2(x,y);r.sizeDelta=new Vector2(w,h);g.AddComponent<Image>().color=bg;return g;}
-    static Text Lbl(Transform p,string n,string t,int sz,float x,float y,float w,float h,Color c,Font f,TextAnchor a){return LblA(p,n,t,0,1,0,1,sz,x,y,w,h,c,f,a);}
-    static Text LblA(Transform p,string n,string t,float ax,float ay,float px,float py,int sz,float x,float y,float w,float h,Color c,Font f,TextAnchor a){var g=new GameObject(n);g.transform.SetParent(p,false);var r=g.AddComponent<RectTransform>();r.anchorMin=new Vector2(ax,ay);r.anchorMax=new Vector2(ax,ay);r.pivot=new Vector2(px,py);r.anchoredPosition=new Vector2(x,y);r.sizeDelta=new Vector2(w,h);var tt=g.AddComponent<Text>();tt.text=t;tt.font=f;tt.fontSize=sz;tt.alignment=a;tt.color=c;tt.raycastTarget=false;return tt;}
-    static GameObject Ch(Transform p,string n){var g=new GameObject(n);g.transform.SetParent(p,false);return g;}
-    static (Button btn,Text label) Btn(Transform p,string n,string l,Font f,float x,float w,float h,Color bg,UnityEngine.Events.UnityAction cb,int fsz=16){var g=new GameObject(n);g.transform.SetParent(p,false);var r=g.AddComponent<RectTransform>();r.anchorMin=new Vector2(0.5f,0.5f);r.anchorMax=new Vector2(0.5f,0.5f);r.pivot=new Vector2(0.5f,0.5f);r.anchoredPosition=new Vector2(x,0);r.sizeDelta=new Vector2(w,h);var i=g.AddComponent<Image>();i.color=bg;var b=g.AddComponent<Button>();b.onClick.AddListener(cb);var lg=new GameObject("L");lg.transform.SetParent(g.transform,false);var lr=lg.AddComponent<RectTransform>();lr.anchorMin=Vector2.zero;lr.anchorMax=Vector2.one;lr.offsetMin=Vector2.zero;lr.offsetMax=Vector2.zero;var lt=lg.AddComponent<Text>();lt.text=l;lt.font=f;lt.fontSize=fsz;lt.alignment=TextAnchor.MiddleCenter;lt.color=Color.white;lt.raycastTarget=false;return(b,lt);}
-    static (Button btn,Text label) Btni(Transform p,string n,string l,Font f,float x,float w,float h,Color bg,UnityEngine.Events.UnityAction cb){return Btn(p,n,l,f,x,w,h,bg,cb);}
 }

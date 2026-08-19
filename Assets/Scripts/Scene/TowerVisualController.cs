@@ -42,6 +42,8 @@ public class TowerVisualController : MonoBehaviour
     public float idleYawOffset = 180f;
     [Tooltip("转向速度（度/秒）")]
     public float turnSpeed = 540f;
+    [Tooltip("炮塔头部俯仰上限（度）：攻击时上下跟随目标高度，限制在此范围内")]
+    public float pitchLimit = 70f;
     [Tooltip("后坐力最大后退距离（炮塔局部 Z，枪口反方向）")]
     public float recoilDistance = 0.12f;
 
@@ -79,11 +81,13 @@ public class TowerVisualController : MonoBehaviour
     bool _hasAim;
     float _aimT;
     Vector3 _aimWorldDir;
+    Vector3 _aimWorldDir3D; // 保留高度差的完整方向，用于炮塔俯仰
     bool _recoilKicking;
     float _recoilT;
     float _fireTime = -999f;
     bool _particlesFired;
     int _lastRound = -1;
+    bool _particleFrozen; // 粒子冻结状态缓存，避免暂停期间每帧重复调用 FreezeParticles
 
     // 攻击目标可视化（Tracer + 命中闪光）
     LineRenderer _tracer;
@@ -181,10 +185,13 @@ public class TowerVisualController : MonoBehaviour
     {
         if (!_setup || _turret == null) return;
 
-        Vector3 dir = targetWorldPos - _turret.position;
+        Vector3 fullDir = targetWorldPos - _turret.position;
+        Vector3 dir = fullDir;
         dir.y = 0f;
         if (dir.sqrMagnitude < 0.0001f) dir = _turret.forward;
         _aimWorldDir = dir.normalized;
+        // 完整 3D 方向：保留高度差，供炮塔上下俯仰跟随目标
+        _aimWorldDir3D = fullDir.sqrMagnitude < 0.0001f ? _aimWorldDir : fullDir.normalized;
         _hasAim = true;
         _aimT = aimHoldDuration;
 
@@ -212,6 +219,7 @@ public class TowerVisualController : MonoBehaviour
         _hasAim = false;
         _aimT = 0f;
         _aimWorldDir = Vector3.forward;
+        _aimWorldDir3D = Vector3.forward;
         _recoilKicking = false;
         _recoilT = 0f;
         _particlesFired = false;
@@ -417,10 +425,27 @@ public class TowerVisualController : MonoBehaviour
         bool playing = _player == null || _player.playing;
         if (!playing)
         {
-            FreezeParticles(true);
+            if (!_particleFrozen) { FreezeParticles(true); _particleFrozen = true; }
             return; // 暂停：冻结炮塔/后坐力/粒子/闪光/Tracer/命中闪光
         }
-        FreezeParticles(false);
+        if (_particleFrozen) { FreezeParticles(false); _particleFrozen = false; }
+
+        // ── 完全空闲快速退出：无瞄准/后坐/闪光/粒子/Tracer/命中圆环时，只做待机对齐 ──
+        bool hasActive = _hasAim || _recoilKicking || _recoilT < 1f || _flashT > 0f
+                         || _tracerT > 0f || _particlesFired
+                         || (_hitRing != null && _hitRing.gameObject.activeSelf);
+        if (!hasActive)
+        {
+            _recoilT = 1f;
+            if (_turret.localPosition != _turretBaseLocalPos)
+                _turret.localPosition = _turretBaseLocalPos;
+            // 待机旋转：已到位则跳过，避免空闲塔每帧重复四元数计算
+            Vector3 idleFwd = Quaternion.Euler(0f, idleYawOffset, 0f) * transform.forward;
+            Quaternion idle = Quaternion.LookRotation(idleFwd, Vector3.up);
+            if (Quaternion.Angle(_turret.rotation, idle) > 0.1f)
+                _turret.rotation = Quaternion.RotateTowards(_turret.rotation, idle, turnSpeed * Time.deltaTime);
+            return;
+        }
 
         // 攻击瞄准保持计时：到期回到待机朝向（连续攻击时 Fire 会刷新 _aimT）
         if (_hasAim)
@@ -429,11 +454,25 @@ public class TowerVisualController : MonoBehaviour
             if (_aimT <= 0f) _hasAim = false;
         }
 
-        // 炮塔转向：瞄准目标（准确 LookAt）或回到待机 180°
-        Vector3 desiredForward = _hasAim
-            ? _aimWorldDir
-            : Quaternion.Euler(0f, idleYawOffset, 0f) * transform.forward;
-        Quaternion desired = Quaternion.LookRotation(desiredForward, Vector3.up);
+        // 炮塔转向：水平 yaw 指向目标 + 上下俯仰 pitch 跟随目标高度；否则回到待机 180°
+        Quaternion desired;
+        if (_hasAim)
+        {
+            // 水平投影做 yaw（方向只有 XZ）
+            Vector3 flat = new Vector3(_aimWorldDir3D.x, 0f, _aimWorldDir3D.z);
+            if (flat.sqrMagnitude < 0.0001f) flat = transform.forward;
+            flat.Normalize();
+            Quaternion yaw = Quaternion.LookRotation(flat, Vector3.up);
+            // 高度差转俯仰角（正=向下，负=向上），绕炮塔自身 X 轴
+            float pitchDeg = Mathf.Asin(Mathf.Clamp(-_aimWorldDir3D.y, -1f, 1f)) * Mathf.Rad2Deg;
+            pitchDeg = Mathf.Clamp(pitchDeg, -pitchLimit, pitchLimit);
+            desired = yaw * Quaternion.Euler(pitchDeg, 0f, 0f);
+        }
+        else
+        {
+            Vector3 idleFwd = Quaternion.Euler(0f, idleYawOffset, 0f) * transform.forward;
+            desired = Quaternion.LookRotation(idleFwd, Vector3.up);
+        }
         _turret.rotation = Quaternion.RotateTowards(_turret.rotation, desired, turnSpeed * Time.deltaTime);
 
         // 后坐力两阶段：快速后退（EaseOutCubic）+ 平滑恢复（Smooth01），位置恒为 base+offset 不漂移

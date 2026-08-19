@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-17
+> **最后更新**：2026-08-19
 
 ---
 
@@ -22,20 +22,20 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | `Core/ReplayModels.cs` | 数据模型 |
 | `Core/ReplayParser.cs` | JSONL 解析 |
 | `Core/ReplayState.cs` | 状态引擎：Diff + WorldPos 坐标转换 |
-| `Core/ReplayPlayer.cs` | 主控：回合推进、smoothstep 插值、事件回调 |
-| `Core/ReplayEntry.cs` | 入口：`[RuntimeInitializeOnLoadMethod]` 自动启动 |
+| `Core/ReplayPlayer.cs` | 主控：回合推进、smoothstep 插值、事件回调；野兽(11-14)登场屏蔽出生光环（防多回合机器人陆续登场时周期性闪现白圈），Tracer 弹道/建筑光环等其余特效不受影响 |
+| `Core/ReplayEntry.cs` | 入口：`[RuntimeInitializeOnLoadMethod]` 自动启动；WebGL 用 `UnityWebRequest` 加载 replay（`RelativeStreamingUrl` 相对路径 + `LoadWebText` try/catch 兜底 demo） |
 
 ### 场景 & 表现
 | 文件 | 职责 |
 |------|------|
 | `Scene/SceneBuilder.cs` | **3D 地形搭建**：草地网格、森林边界、围墙、水面、NPC 站位 |
-| `Scene/UnitView.cs` | **单位表现核心**：Create/Configure/LateUpdate/动画/血条 |
+| `Scene/UnitView.cs` | **单位表现核心**：Create/Configure/LateUpdate/动画/血条。**性能优化**：SetHp/SetStun/UpdateAnimation 值缓存自门控（仅 HP/眩晕/生死变化时刷新材质、写旋转、设 Animator.speed），LateUpdate 空闲跳过插值，静态 ReplayPlayer 缓存；野兽阴影/入场粒子已在 Prefab 资产源头根治，无运行时补救代码 |
 | `Scene/UnitViewSprite.cs` | **静态工具**：Sprite 扫描、颜色计算（从 UnitView 拆出） |
 | `Scene/ResourceViewManager.cs` | **矿石系统**：3D 球体 + 物理 .mat 材质 |
 | `Scene/TeamColorApplicator.cs` | **阵营标识**：仅控制脚底 SelRing 颜色（已废除全身染色） |
 | `Scene/DayNightController.cs` | **昼夜系统 v2**：四阶段 `LightingProfile` (Day/Dusk/Night/Dawn)，从 `ReplayPlayer.RoundFloat` 连续回合 → `Mathf.Repeat` → 阶段判定 → `LightingProfile.Lerp` 插值 |
 | `Scene/NpcFacingController.cs` | **NPC 转向**：切比雪夫距离来访者检测 + 命令优先级 (executeTask/submitAnswer/sell) + Smooth01 八方向水平旋转；与 FBX/骨骼解耦 |
-| `Scene/TowerVisualController.cs` | **防御塔视觉**（type=3）：炮塔转向 attack 目标 + 两阶段程序化后坐力 + Muzzle 粒子/闪光 + 阵营配色 Tracer/命中圆环；统一 Minigun 塔模型；暂停冻结/Seek 复位 |
+| `Scene/TowerVisualController.cs` | **防御塔视觉**（type=3）：炮塔转向 attack 目标 + 两阶段程序化后坐力 + Muzzle 粒子/闪光 + 阵营配色 Tracer/命中圆环；统一 Minigun 塔模型；暂停冻结/Seek 复位；LateUpdate 空闲快速路径（无活跃效果时只对齐待机朝向并提前返回，降低同屏开销） |
 | `Scene/MatLib.cs` | 材质缓存池 + 程序化圆环贴图（Sprites/Default shader） |
 | `FX/FxFactory.cs` | 世界空间特效：伤害数字/弹道/光环/气泡 + **CFXR AoE 特效**（`PlayBombEffect`/`PlayDizzyEffect`，统一 `Resources.Load("FX/...")`） |
 | `Scene/Pickable.cs` `Scene/Billboard.cs` | 点击拾取 / 面向相机 |
@@ -44,7 +44,9 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | `FX/TradeBadge.cs` | 交易/使用徽标：World Space Billboard + 弹出淡出；Vendor/Shop 独立参数；角色使用道具 `ShowUse`（「使用 xx」）；背景框按全宽/半宽自适应 |
 
 ### UI
-`HudController.cs` `EventLogPanelController.cs` `PlaybackControlPanelController.cs` `SettlementPanelController.cs`
+`HudController.cs` `EventLogPanelController.cs` `PlaybackControlPanelController.cs` `SettlementPanelController.cs` + `UnitDebugOverlay.cs`
+
+4 个面板均由场景 `PrefabRefs` 按 GUID 引用对应 prefab 驱动（`Create()` 缺 prefab 直接 `LogError`，**纯代码兜底 `CreateFromCode` 已全部删除**）。字体运行时统一替换为 `NotoSansSC`（CJK，**无 emoji 字形** → 项目 UI 全部用纯中文文本，不用 emoji）。`UnitDebugOverlay.cs` 是单位头顶调试悬浮文字（`[ID|Pos|HP|ATK]`），由 UnitView 挂载、受 `PlaybackControlPanelController.ShowUnitStats`（底部面板「显示」按钮）全局开关控制。
 
 ---
 
@@ -69,6 +71,8 @@ Resources/Prefabs/Beasts/
 ```
 层级：Beast_XX → Visual → RobotAdjust (scale/Y/yaw) → Robot (Nested Prefab)
 原 Skeleton 节点保留但 disable。动画通过 `AnimatorOverrideController` 将 Skeleton_AnimatorController 参数映射到 Robot clips。
+
+**资产源头已根治（2026-08-19）**：4 个 Beast prefab + 4 个底层 Robot prefab（Bot/Boxy/Tanker/Metal）的全部 Renderer 均 `shadowCastingMode=Off` + `receiveShadows=false`（`m_CastShadows`/`m_ReceiveShadows=0`）；Beast_11 底层 `Bot Robot.prefab` 的入场粒子 `FX Hex`（playOnAwake 白圈）已彻底删除（Boxy/Tanker/Metal 本就无粒子）。运行时无任何阴影/粒子补救代码。
 
 ### 建筑
 ```
@@ -162,6 +166,12 @@ Create(state, parent)
 - **三色变色**：MaterialPropertyBlock `_Color`：#44EC6F(>60%) / #FFC94D(30-60%) / #FF3B30(<30%)
 - **自动补建**：UpgradeHpTo3D() 若 Prefab 无 HpFill 则创建，若 Default-Material 则替换为 Standard
 
+### 性能优化（2026-08-19，WebGL 大量单位同屏）
+- **SetHp/SetStun/UpdateAnimation 值缓存自门控**：`_lastHp/_lastMaxHp/_lastStun/_wasDead/_animSpeed` 缓存，仅数值实际变化才刷新 MPB 材质、写旋转、设 Animator.speed——静止单位每帧零开销（即使 `ReplayPlayer.Update` 每帧调用）
+- **LateUpdate 空闲跳过**：`isMoving==false` 不插值；`TowerVisualController` 无活跃效果（aim/recoil/flash/particles/tracer/hitRing）时只对齐待机朝向并提前返回
+- **静态缓存**：`s_cachedPlayer` 复用 ReplayPlayer，避免大量单位各自 `FindObjectOfType`
+- **野兽渲染瘦身**：阴影与入场粒子在 Prefab 资产源头关闭/删除（见第三节），运行时零遍历补救
+
 ### 动画系统
 - **步幅对齐**：`_animator.speed = Clamp(realSpeed * strideCoefficient, 0.15, 4.5) * AnimatorSpeed`
 - **applyRootMotion = false**：代码完全控制 transform
@@ -242,6 +252,8 @@ Create(state, parent)
 - [ ] 模型正前方朝向正确（调 RobotAdjust.yaw 或 Model rotation）
 - [ ] 血条在头顶上方可见
 - [ ] Console 无 Animator 参数/状态相关错误
+- [ ] 野兽阴影已关闭（新 Robot 模型默认 Cast/Receive Shadows 开启，需在 Prefab 的 MeshRenderer/SkinnedMeshRenderer 关闭，或按 2026-08-19 资产根治方式统一处理）
+- [ ] 野兽无入场粒子（新 Robot 若带 playOnAwake 粒子需删除，避免登场闪现白圈）
 
 ---
 
@@ -258,10 +270,12 @@ Create(state, parent)
 | 改血条颜色 | `UnitView.cs` SetHp() 中的 Color 值 | 低 |
 | 改围栏样式 | `SceneBuilder.cs` BuildPerimeterFence() 中的 fenceFbx 路径 | 低 |
 | 调塔尺寸/朝向/后坐力/时间参数 | 打开 `CubeTowers/Tower_Minigun_{Faction}.prefab` 的 `TowerVisualController` Inspector 字段 | 低 |
+| 调炮塔俯仰幅度 | 同上 Inspector 的 `pitchLimit`（默认 70°，攻击时头部上下跟随目标高度） | 低 |
 | 调塔大小（直接改 Prefab scale） | 改 `CubeTowers/Tower_Minigun_{Faction}.prefab` 根 Transform 的 scale（与 `visualScale` 相乘，默认 1.6） | 低 |
 | 切换塔模型（当前统一 Minigun） | `TowerVisualController.cs` 的 `ResolveTowerType()` / `TURRET_NODES` | 低 |
 | 换塔模型素材 | 生成 ProjectAssets 源塔 + 重跑 `Tools/WildernessReplay/Build Tower Visual Prefabs`（见第五节） | 中 |
 | 换炸弹/眩晕特效 | `FxFactory.cs` 顶部 `RES_BOMB`/`RES_DIZZY` 路径（或直接替换 `Resources/FX/` 下 prefab）；调大小改 `BOMB_SCALE`/`DIZZY_SCALE` | 低 |
+| 改 WebGL replay 加载路径/换远程链接 | `ReplayEntry.cs` `Load()` 的 WebGL 分支：改 `RelativeStreamingUrl("replay.txt")` / `("demo_replay.jsonl")` 两处文件名；换远程完整链接需绕过 `RelativeStreamingUrl` 直接传完整 URL | 低 |
 
 ---
 
@@ -278,12 +292,14 @@ Create(state, parent)
 | **Mathf.SmoothStep ≠ HLSL smoothstep** | C# `Mathf.SmoothStep(from,to,t)` 是插值函数（以 t 为 0~1 因子在 from/to 间插值），不是 HLSL `smoothstep(edge0,edge1,x)` 的 0~1 阶跃。圆环遮罩和昼夜 Blend 必须用自定义 `Smooth01`（基于 `Clamp01` + Hermite 曲线），见 `MatLib.Smooth01()` 和 `DayNightController.Smooth01()` |
 | **昼夜 130 回合/天** | `StateEngine.DayOf(n)` / `IsNight(n)` 硬编码 130 回合周期（80 白天 + 50 夜晚）。`DayNightController` 通过 `ReplayPlayer.RoundFloat`（连续浮点值）计算 `cyclePosition = Mathf.Repeat(roundFloat, 130f)`，黄昏 72-80、黎明 122-130 |
 | **NPC T-Pose：Animator Controller 缺失** | OfficerNPC/VendorNPC Prefab 的 Animator 虽有有效 Avatar，但 `m_Controller: {fileID: 0}`。Humanoid 模型 + 无 Controller = bind pose（双手张开）。赋 Adventurer_AnimatorController 即可复用 KayKit Idle_A。SCENE BUILDER 静态 NPC 不会走 UnitView.ConfigureFromUnitPrefab，必须在 BuildNeutralNpc 中单独添加组件 |
-| **Robot Controller 零参数** | 所有 Robot 素材包的 `.controller` 都是 `m_AnimatorParameters: []`，纯 ExitTime 链式过渡，外部无法控制。必须用 `AnimatorOverrideController(Skeleton_AnimatorController)` 替换，按名称模糊匹配 Idle/Walk/Attack/Death clip。Boxy/Tanker 缺少 Die 状态，Metal Robot 最完整 | 
+| **Robot Controller 零参数** | 所有 Robot 素材包的 `.controller` 都是 `m_AnimatorParameters: []`，纯 ExitTime 链式过渡，外部无法控制。必须用 `AnimatorOverrideController(Skeleton_AnimatorController)` 替换，按名称模糊匹配 Idle/Walk/Attack/Death clip。Boxy/Tanker 缺少 Die 状态，Metal Robot 最完整 |
+| **野兽登场"幽灵白圈"两个来源** | ① 资产级：Beast_11 底层 `Bot Robot.prefab` 的 `FX Hex` 粒子（playOnAwake 白圈，2026-08-19 已从资产删除）；② 代码级：`ReplayPlayer.OnSpawn` 的 `FxFactory.Ring` 出生光环（已对野兽 11-14 屏蔽，其余单位保留）。根治在资产源头，UnitView 无运行时补救代码。若未来换新 Robot 模型，需同样在 Prefab 里删掉 playOnAwake 入场粒子 + 关阴影 | 
 | **Robot Prefab 不在 Resources 下** | `Resources.Load` 无法加载。必须通过 Nested Prefab 引用（拖入 Beast Prefab 内部）或 PrefabRefs 序列化字段。不要用 `AssetDatabase.LoadAssetAtPath`（仅 Editor 可用，Build 失效） |
 | **Minigun 源塔 Muzzle 节点默认禁用** | Cube Tower Defense 源 prefab 里 Minigun 的 `Muzzle` 节点 `activeSelf=false`（原游戏脚本负责开火时激活）。若直接 `Play()` 粒子，`isPlaying` 永远 false。`TowerVisualController.Setup()` 里已先设 `playOnAwake=false` 再 `_muzzlePoint.SetActive(true)` |
 | **ParticleSystemRenderer 撑大包围盒** | 粒子拖尾/射击流会把 `GetComponentsInChildren<Renderer>().bounds` 撑到 9+ 单位，导致血条过宽过高。测模型尺寸必须跳过 `ParticleSystemRenderer`（`TowerVisualController.MeasureSize()` 已处理） |
 | **MainModule 是结构体** | `var m = ps.main; m.playOnAwake = false;` 这种写法有效（MainModule 属性 setter 直写原生对象），但不要对 `ps.main` 整体赋值 |
 | **legacy TextMesh + Dynamic 字体在 WebGL 隐形** | 世界空间 `TextMesh`（3D 文本，非 uGUI `Text`）赋 Dynamic 字体（NotoSansSC）后在 WebGL 两个坑：① 不主动请求字形 → **中文空白**（需 `font.RequestCharactersInTexture(text, fontSize, style)`）；② 不自动把 `MeshRenderer.sharedMaterial` 同步成 `font.material` → **整个文本隐形，连数字/英文都不显示**（需 `mr.sharedMaterial = font.material`）。uGUI `Text` 无此问题（内部订阅 `textureRebuilt`）。见 `UiFonts.PrewarmWorldText()` / `TradeBadge.SetText` |
+| **WebGL "Insecure connection not allowed"** | HTTP 页面下 `UnityWebRequest.Get(绝对 http://URL)` 抛 `InvalidOperationException`。`ReplayEntry.RelativeStreamingUrl()` 把 `Application.streamingAssetsPath` 归一化为「相对当前网页」路径（剥掉协议+host，协议跟随页面），`LoadWebText()` 同步段包 try/catch 兜底走 demo，异常不中断初始化 |
 
 ---
 
@@ -291,8 +307,18 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-08-19 | **修复基地对齐 + 调试文字格式**：基地(type=4) 的锚点 (x,y) 实为 2×2 的**左上角格**（占地 x..x+1, y-1..y），`ReplayState.UnitWorldPos` 中心偏移从 `+0.5/+0.5` 改为 `+0.5/-0.5`（原写法使建筑偏北 1 格，中心落在基地四格外）；同时移除 `UnitView.CalibrateBaseScale` 的 `_pivotOffset` Z 偏移（实测 Base.prefab Model_Red/Blue 均 X/Z 居中）。`UnitDebugOverlay` 文字改黑色、格式 `ID: 12 | Pos: (10, 24) | HP: 100 | ATK: 15`（空格分隔、坐标无小数、ATK 0 明确显示），基地显示 2×2 **左上角格坐标**。实测：红方基地(30,10)、蓝方(10,24) 的建筑中心与四格中心重合，overlay 显示 `Pos: (30, 10)` / `(10, 24)` |
+| 2026-08-19 | **单位调试悬浮文字（全局「显示」开关）**：底部面板 ControlBar 新增 `Btn_ShowStats`「显示」按钮，切换 `PlaybackControlPanelController.ShowUnitStats`（默认关，点击取反 + 琥珀色高亮）；新增 `UnitDebugOverlay.cs`（`UnitView.ConfigureFromUnitPrefab` 末尾挂载，围墙 type5/野兽≥11 内部过滤不渲染），开启时非围墙/非野兽单位头顶显示 `[ID|Pos|HP|ATK]`（0.5s 节流 + hp/pos/ap 脏检查重建文本，关闭/死亡时 TextMesh 停用零渲染） |
+| 2026-08-19 | **播放面板维护**：ControlBar 560→680（新增「自由」按钮后 10 个按钮共需 590px，修复「自动」溢出边框）；新增镜头按钮 `CamFree`「自由」（对应键盘 4，`WireCallbacks` 自动接线）；TeamBar/ControlBar 改用 `HorizontalLayoutGroup` 自动排布 |
+| 2026-08-19 | **移除全部 UI emoji + 清理死代码/旧资产**：`PlaybackControlPanel/SettlementPanel/EventLogPanel` 的代码与 prefab 全部改纯中文文本；删除 4 个 UI Controller 的 `CreateFromCode` 纯代码兜底及无用 helper（`Create` 缺 prefab 改 `LogError` 并返回 null，ReplayEntry/ReplayPlayer 调用处补 null 保护）；删除 `Assets/Prefabs/UI/Legacy/`（`HudPanel_Legacy`、`PlaybackControlPanel_Legacy`）；HudController 清理 `panelBg`/`BG_COLOR` 死字段 |
+| 2026-08-19 | **野兽特效资产源头根治（Prefab 级）**：4 个 Beast prefab + 4 个底层 Robot prefab 全部 Renderer 关阴影（`m_CastShadows`/`m_ReceiveShadows=0`）；Beast_11 底层 `Bot Robot.prefab` 的入场粒子 `FX Hex`（playOnAwake 白圈）彻底删除；删除 UnitView 运行时补救 `DisableBeastShadows()`/`DisableBeastSpawnFx()` 及其调用，`ConfigureFromBeastPrefab()` 恢复干净。验证：野兽登场 0 阴影 / 0 粒子 / 0 FX Hex，console 0 报错，防御塔阴影不受影响 |
+| 2026-08-19 | **野兽"幽灵白圈"根治（动态 Ring）**：`ReplayPlayer.OnSpawn` 的 `FxFactory.Ring` 出生光环对野兽 11-14 屏蔽（`if (!u.IsBeast)`）——多回合机器人陆续登场时周期性闪现、从小到大、暂停即消失的白圈消失；工人/开拓者/建筑出生光环与防御塔 Tracer/命中环不受影响 |
+| 2026-08-19 | **WebGL 性能优化（大量单位同屏）**：UnitView `SetHp/SetStun/UpdateAnimation` 值缓存自门控（`_lastHp/_lastMaxHp/_lastStun/_wasDead/_animSpeed`，仅变化时刷新 MPB/旋转/Animator.speed）；LateUpdate `isMoving==false` 跳过插值；TowerVisualController LateUpdate 空闲快速路径；静态 `s_cachedPlayer` 缓存。Parser/StateEngine/胜负判定零改动 |
+| 2026-08-19 | **移除野兽 EvilAura 光环**：野兽(11-14) 无 SelRing（SelRing 仅工人 6/开拓者 7 有），脚底实际光环为 Hovl Debuff 粒子 `EvilAura`；删除 `SetupBeastAura()` 方法、调用及 `BEAST_AURA_*` 常量 |
+| 2026-08-18 | **WebGL 加载安全修复 + link.xml**：`ReplayEntry.cs` 新增 `RelativeStreamingUrl()`（剥 http(s)://host → 相对路径，避免 "Insecure connection not allowed"）+ `LoadWebText()`（try/catch 兜底 demo，异常不中断初始化）；新增 `Assets/link.xml` 保留 `UnityEngine.MeshCollider` 防 IL2CPP/WebGL 裁剪 |
 | 2026-08-17 | **AoE 道具特效（Cartoon FX Remaster）**：Bomb/DizzyWeapon 接入 CFXR 特效——`ReplayPlayer.OnSkillAreaEffect` 触发 → `FxFactory.PlayBombEffect/PlayDizzyEffect`（中心世界坐标）；prefab 复制到 `Resources/FX/`（`CFXR Explosion 1`、`CFXR3 Magic Aura A (Runic)`），统一 `Resources.Load("FX/...")`（废弃 AssetDatabase，Editor/WebGL 一致）；`BOMB_SCALE`/`DIZZY_SCALE`=1.8 覆盖 3×3、`Destroy(instance,duration)` 自动回收、Bomb 附加震屏。**角色使用道具徽标**：`TradeBadge.ShowUse` 让工人/开拓者 use 道具时头顶弹「使用 xx」（背景框全宽/半宽自适应） |
 | 2026-08-14 | **中文字体体系 + WebGL 修复**：新增 `UiFonts`（NotoSansSC 统一入口，uGUI Text/TextMesh 共用，Dynamic）；WebGL 下 replay 用 `UnityWebRequest` 读 StreamingAssets（不用 File API）；TradeBadge 隐形根因修复（`RequestCharactersInTexture` 预热 + `MeshRenderer.sharedMaterial = font.material` 材质同步）；物品名中文映射扩展（铜/铁/石/药品/炸弹/眩晕武器/召唤令/耐久强化…） |
+| 2026-08-19 | **防御塔炮塔俯仰瞄准**：`Fire()` 保留完整 3D 目标方向（`_aimWorldDir3D`），`LateUpdate` 在水平 yaw 基础上叠加绕炮塔自身 X 轴俯仰（高度差转 `asin` 俯仰角，`pitchLimit` 默认 70° 可调）；待机仍回 180°；ResetAttack/暂停冻结同步复位 |
 | 2026-08-13 | **防御塔 Prefab scale 可控大小**：`TowerVisualController.Setup()` 原先 `localScale = one * visualScale` 会覆盖 Prefab 根 Transform 的 scale，导致直接改 Prefab 缩放无效；改为 `prefabScale × visualScale`，现在改 `CubeTowers/Tower_Minigun_{Faction}.prefab` 根 scale 即可控制塔大小（与角色/机器人一致） |
 | 2026-08-13 | **防御塔统一 Minigun + 阵营配色特效**：`ResolveTowerType()` 固定返回 Minigun，三塔（红/蓝）统一加载 `Tower_Minigun_{Faction}`（删 `SLOT_TYPES`/slot 映射死代码）；Tracer/命中圆环/枪口灯按阵营配色（红 `#FF2D55` / 蓝 `#007AFF`），统一 Minigun 细线 0.07/0.04、0.15s；后坐力改两阶段 `EaseOutCubic`+`Smooth01`；6 个时间参数 `[SerializeField]`（aimHold/kick/recov/light/particle/ring） |
 | 2026-08-13 | **防御塔视觉续作（第 4 阶段）**：6 个可编辑视觉包装 Prefab（`CubeTowers/Tower_{Type}_{Faction}`，序列化字段迁到 Inspector，Setup 不覆盖）；待机 180°；真实枪口 Tracer + 命中闪光；`Tower.prefab` 旧 Visual 停用改 `VisualRoot`；旧通用激光对 type=3 禁用；`Assets/Editor/TowerPrefabBuilder.cs` 一键重建 |
@@ -308,6 +334,6 @@ Create(state, parent)
 | 2026-08-11 | **昼夜系统 v2**：四阶段 `LightingProfile`；Dusk 暖金/Night 浅蓝 I=0.78/Dawn 桃色；时间 0-5 Dawn→Day / 5-65 Day / 65-76 Day→Dusk / 76-80 Dusk→Night / 80-125 Night / 125-130 Night→Dawn |
 | 2026-08-11 | **NPC Idle + 转向**：修复 OfficerNPC/VendorNPC T-Pose（根因 Prefab `m_Controller:{fileID:0}` 无 Controller）；赋 `Adventurer_AnimatorController`；`NpcFacingController`（切比雪夫 + 命令优先级 + Visual 节点平滑 Y 轴旋转）；`ReplayPlayer.roundActions` |
 | 2026-08-12 | **Robot 野兽替换**：Beast_11~14 改用 Robot 素材包 Nested Prefab（Bot/Boxy/Tanker/Metal）；Visual → RobotAdjust 容器（独立 scale/Y/yaw）；`SetupRobotAnimator()` 通过 `AnimatorOverrideController` 映射 Skeleton 参数到 Robot clips；暂停冻结动画（`_animator.speed=0`）；血条按类型独立配置；移除运行时 AssetDatabase 依赖 |
-| 2026-08-12 | **Free 相机模式**：`ReplayCameraRig` 新增 `CameraMode.Free`；左键平移/右键旋转/滚轮向鼠标位置缩放；pivot 地图边界 clamp；4 号快捷键 + UI 🆓 按钮；暂停时可用 `unscaledDeltaTime` |
+| 2026-08-12 | **Free 相机模式**：`ReplayCameraRig` 新增 `CameraMode.Free`；左键平移/右键旋转/滚轮向鼠标位置缩放；pivot 地图边界 clamp；4 号快捷键 + UI「自由」按钮；暂停时可用 `unscaledDeltaTime` |
 | 2026-08-12 | **TradeBadge 交易提示**：小贩 sell 和武器商店 buy 的世界空间徽标；`ReplayCommand.targetName` 解析贩卖/购买物品名；中文映射（copper→铜等）；背包 UI 队伍级聚合 |
 | 2026-08-10 | 动画僵死 Bug 根除 + 步幅对齐 + 昼夜自愈 |

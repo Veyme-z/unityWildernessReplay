@@ -20,96 +20,19 @@ public class EventLogPanelController : MonoBehaviour
     static readonly Color C_KILL   = new Color(0.96f, 0.34f, 0.28f);
     static readonly Color C_INFO   = new Color(0.75f, 0.73f, 0.68f);
 
-    static Font BuiltinFont()
-    {
-        return UiFonts.Get();
-    }
-
     public static EventLogPanelController Create(ReplayPlayer player)
     {
-        // 优先使用 prefab（如果有配置），否则退回纯代码创建
+        // prefab 是真源：场景 PrefabRefs 按 GUID 引用，缺失即报错（不再有纯代码兜底）
         var prefab = PrefabRefs.Instance.GetEventLogPrefab();
-        if (prefab != null)
+        if (prefab == null)
         {
-            var go = Object.Instantiate(prefab);
-            UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
-            var ctrl = go.GetComponentInChildren<EventLogPanelController>();
-            if (ctrl == null) ctrl = go.AddComponent<EventLogPanelController>();
-            return ctrl;
+            Debug.LogError("[EventLogPanelController] 缺少 EventLogPanel prefab（请检查场景 PrefabRefs.eventLogPanelPrefab），事件日志未创建。");
+            return null;
         }
-        Debug.LogWarning("[EventLogPanelController] EventLogPanel prefab 缺失，回退到代码创建 UI（请检查场景 PrefabRefs 或 Resources/Prefabs/UI/EventLogPanel）。");
-        return CreateFromCode(player);
-    }
-
-    static EventLogPanelController CreateFromCode(ReplayPlayer player)
-    {
-        var font = BuiltinFont();
-
-        // ── 独立 Canvas ──
-        var canvasGo = new GameObject("EventLogCanvas");
-        var canvas = canvasGo.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 210;
-        var scaler = canvasGo.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920, 1080);
-        scaler.matchWidthOrHeight = 0.5f;
-        canvasGo.AddComponent<GraphicRaycaster>();
-
-        // ── 面板（暗色背景） ──
-        var panelGo = new GameObject("Panel");
-        panelGo.transform.SetParent(canvasGo.transform, false);
-        var panelRt = panelGo.AddComponent<RectTransform>();
-        panelRt.anchorMin = new Vector2(0, 0);
-        panelRt.anchorMax = new Vector2(0, 1);
-        panelRt.pivot = new Vector2(0, 0.5f);
-        panelRt.anchoredPosition = new Vector2(10, 0);
-        panelRt.sizeDelta = new Vector2(290, -70);
-        panelGo.AddComponent<Image>().color = new Color(0.102f, 0.102f, 0.118f, 0.85f);
-
-        // ── ScrollRect（挂 RectMask2D 裁切溢出） ──
-        var srGo = new GameObject("ScrollView");
-        srGo.transform.SetParent(panelGo.transform, false);
-        var srRt = srGo.AddComponent<RectTransform>();
-        srRt.anchorMin = Vector2.zero;
-        srRt.anchorMax = Vector2.one;
-        srRt.offsetMin = new Vector2(6, 6);
-        srRt.offsetMax = new Vector2(-6, -6);
-        srGo.AddComponent<RectMask2D>();
-        var sr = srGo.AddComponent<ScrollRect>();
-        sr.horizontal = false;
-        sr.vertical = true;
-        sr.movementType = ScrollRect.MovementType.Clamped;
-        sr.viewport = srRt;
-
-        // ── Content（Text 直接挂在 Content 上，单层结构） ──
-        var ctGo = new GameObject("Content");
-        ctGo.transform.SetParent(srGo.transform, false);
-        var ctRt = ctGo.AddComponent<RectTransform>();
-        ctRt.anchorMin = new Vector2(0, 1);
-        ctRt.anchorMax = new Vector2(1, 1);
-        ctRt.pivot = new Vector2(0, 1);
-        ctRt.anchoredPosition = Vector2.zero;
-        ctRt.sizeDelta = new Vector2(0, 0);
-        var csf = ctGo.AddComponent<ContentSizeFitter>();
-        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-        // Text 直接挂 Content，不做独立子节点
-        var txt = ctGo.AddComponent<Text>();
-        txt.font = font;
-        txt.fontSize = 15;
-        txt.alignment = TextAnchor.UpperLeft;
-        txt.horizontalOverflow = HorizontalWrapMode.Wrap;
-        txt.verticalOverflow = VerticalWrapMode.Overflow;
-        txt.color = C_INFO;
-        txt.raycastTarget = false;
-        txt.text = "📋 事件日志就绪\n等待对局事件...\n";
-
-        sr.content = ctRt;
-
-        var ctrl = panelGo.AddComponent<EventLogPanelController>();
-        ctrl._text = txt;
-        ctrl._scroll = sr;
+        var go = Object.Instantiate(prefab);
+        UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
+        var ctrl = go.GetComponentInChildren<EventLogPanelController>();
+        if (ctrl == null) ctrl = go.AddComponent<EventLogPanelController>();
         return ctrl;
     }
 
