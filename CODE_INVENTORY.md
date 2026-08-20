@@ -1,7 +1,7 @@
 # CODE_INVENTORY — WildernessReplay 可维护性盘点
 
-> 只读盘点产物，2026-08-13 生成，**2026-08-19 已随「删除 CreateFromCode 兜底 + 移除 UI emoji + 删 Legacy 旧资产」清理同步更新**（§1 行数、§3.6、§4 假设5、§5、§6、§7）。
-> 范围：`Assets/Scripts/**`（28 个）+ `Assets/Editor/TowerPrefabBuilder.cs`（1 个）= **29 个项目脚本**。
+> 只读盘点产物，2026-08-13 生成，**2026-08-19 已随「删除 CreateFromCode 兜底 + 移除 UI emoji + 删 Legacy 旧资产」清理同步更新**（§1 行数、§3.6、§4 假设5、§5、§6、§7）；**2026-08-20 已随「UnitView.cs 拆 Partial Class」同步更新**（§1 行数、§3.4/§3.7/§3.8、§4 假设8/10、§6、§7）。
+> 范围：`Assets/Scripts/**`（32 个）+ `Assets/Editor/TowerPrefabBuilder.cs`（1 个）= **33 个项目脚本**。
 > 第三方（KayKit / Low_Poly_Forest / Robots / CubeTowerDefense / Raygeas Shared Assets / ProjectAssets）不审计。
 
 ---
@@ -19,7 +19,11 @@
 | Scripts/Core/ReplayModels.cs | class(纯数据) | 131 | replay 数据模型 | ReplayParser、ReplayState、ReplayPlayer | — | 疑似死代码（多字段未消费） |
 | Scripts/Core/PrefabRefs.cs | MonoBehaviour | 155 | Prefab 引用单例（Inspector→Resources 双轨） | UI Controller 的 Create | Resources | 双轨、疑似死代码（GetUnitPrefab/Has* 未用） |
 | Scripts/Core/MiniJson.cs | static | 172 | 零依赖 JSON 解析器 | ReplayParser | — | — |
-| Scripts/Scene/UnitView.cs | MonoBehaviour | 666 | 单位表现：Create/Configure/LateUpdate/动画/血条/选择圈/塔视觉挂载 | ReplayPlayer、TeamColorApplicator、NpcFacingController | TowerVisualController、MatLib、Pickable、TeamColorApplicator、NpcFacingController、UnitDebugOverlay（挂载） | GodFile、序列化脆弱（Find 按名）、重复实现（EstimateHeight/Width vs MeasureSize） |
+| Scripts/Scene/UnitView.cs | MonoBehaviour（partial 主文件） | 341 | 单位表现核心：字段/Create/Configure*/LateUpdate 调度/SetHp/SetStun/CalibrateBaseScale | ReplayPlayer、TeamColorApplicator、NpcFacingController | TowerVisualController、MatLib、Pickable、TeamColorApplicator、NpcFacingController、UnitDebugOverlay（挂载）+ 4 个 partial | 序列化脆弱（Find 按名）、重复实现（EstimateHeight/Width vs MeasureSize） |
+| Scripts/Scene/UnitView.Anim.cs | MonoBehaviour（partial） | 172 | 动画子模块：SetupRobotAnimator/Worker 覆盖装配、UpdateAnimationState 每帧同步、攻击/采集/死亡触发、AnimatorSpeed 倍速 | UnitView.cs（partial） | ReplayPlayer（AnimatorSpeed 静态字段） | — |
+| Scripts/Scene/UnitView.Hp.cs | MonoBehaviour（partial） | 172 | 血条子模块：UpgradeHpTo3D/EnsureRing/ApplyRingColor/GetSharedHpFillMat/CreateHpCube/EstimateHeight/Width、全局共享材质 | UnitView.cs（partial） | MatLib、TowerVisualController（VisualHeight/Width） | 重复实现（EstimateHeight/Width vs TowerVisualController.MeasureSize） |
+| Scripts/Scene/UnitView.Lod.cs | MonoBehaviour（partial） | 119 | 野兽距离 LOD 子模块：UpdateLod/SetLodStatic、LOD_RANGE 等 public static 调参、烘焙网格缓存 s_lodMeshCache | UnitView.cs（partial） | — | — |
+| Scripts/Scene/UnitView.Tower.cs | MonoBehaviour（partial） | 58 | 防御塔视觉子模块：SetupTowerVisual 包装实例化、TriggerTowerAttack/ResetTowerAttack | UnitView.cs（partial） | TowerVisualController | — |
 | Scripts/Scene/SceneBuilder.cs | static | 490 | 地形：草地/森林/围栏/水面/NPC站位 | ReplayEntry | MatLib、UnitViewSprite、Resources | GodFile、EditorOnly混入Runtime、坐标 |
 | Scripts/Scene/TowerVisualController.cs | MonoBehaviour | 563 | 防御塔视觉：炮塔转向/后坐力/粒子/Tracer/命中环 | UnitView | MatLib、ReplayPlayer | 重复实现（Smooth01）、疑似死代码（Flamethrower/RPG 未加载） |
 | Scripts/Scene/CameraManager.cs | MonoBehaviour | 483 | 自动导播：SmoothDamp+事件特写+震屏+景深(反射) | ReplayEntry、PlaybackControlPanelController、ReplayPlayer、ReplayCameraRig | StateEngine、ReplayCameraRig | 疑似死代码（景深反射可能无包失效） |
@@ -145,7 +149,7 @@ Load():
 
 - **事实**：阵营色至少 **6 处**定义，分「霓虹」与「柔和」两套，且 `ReplayPlayer.TeamTag` 的 challenger/defender 映射**与其余全部相反**。
 - **证据（霓虹系，defender=红 / challenger=蓝）**：
-  - `UnitView.ApplyRingColor`：defender `(1,0.176,0.333)` / challenger `(0,0.478,1)` `UnitView.cs:404-406`
+  - `UnitView.ApplyRingColor`：defender `(1,0.176,0.333)` / challenger `(0,0.478,1)` `UnitView.Hp.cs:124`
   - `TeamColorApplicator.ApplyTeamColor`：同 RGB，α=0.8 `TeamColorApplicator.cs:20-22`
   - `TowerVisualController.FactionColor`：Blue `(0,0.478,1)` / 红 `(1,0.176,0.333)` `TowerVisualController.cs:265`
   - `PlaybackControlPanelController.Sync`：`colRed (1,0.176,0.333)` / `colBlue (0,0.478,1)` `PlaybackControlPanelController.cs:309-310`
@@ -172,7 +176,7 @@ Load():
 ### 3.7 TeamColorApplicator 现在还改不影响 SelRing 的东西吗
 
 - **事实**：**否**。现在只读写 `SelRing`（`unitView.transform.Find("SelRing")`），不碰身体/模型颜色；且与 `UnitView.ApplyRingColor` **功能重复**（两者都烘焙彩色圆环贴图到 SelRing，仅 α 0.8 vs 1.0、是否复用 Material 不同）。
-- **证据**：`TeamColorApplicator.cs:14-43` 全逻辑仅 SelRing；`UnitView.ApplyRingColor` `UnitView.cs:396-415`；调用点 `UnitView.ConfigureFromUnitPrefab` `UnitView.cs:214-215`。
+- **证据**：`TeamColorApplicator.cs:14-43` 全逻辑仅 SelRing；`UnitView.ApplyRingColor` `UnitView.Hp.cs:124`；调用点 `UnitView.ConfigureFromUnitPrefab` `UnitView.cs:161`。
 - **建议**：可删（UnitView 已覆盖 SelRing 染色）；若保留，需确认 Worker/Pioneer prefab 上是否还挂着该组件（删组件前用编辑器核实）。
 
 ### 3.8 未引用方法 / 未用字段 / 未加载 Prefab
@@ -187,13 +191,13 @@ Load():
 - `TeamStat.baseHp` `ReplayState.cs:48` — 写不读（HUD_UI_AUDIT §3 已确认）。
 - `TeamStat.taskText` `ReplayState.cs:47,298` — 拼装但无 UI 消费。
 - `UnitViewSprite.TryGetSprite()` `UnitViewSprite.cs:79` — 未调用（仅 `FindSprite` 在 SceneBuilder fallback 被用）。
-- `Pickable.view` `Pickable.cs:6` — 赋值不读（`UnitView.cs:124,190`）。
+- `Pickable.view` `Pickable.cs:6` — 赋值不读（`UnitView.cs:150,198`）。
 - `ReplayPlayerResult.goldNum/diamondNum`（finish）`ReplayModels.cs:128-129` — 解析但结算只读 `result/totalScore`。
 - `ReplayTeam.invalidTaskCount` `ReplayModels.cs:44`、`ReplayTask.level/roundCost` `ReplayModels.cs:94,96` — 解析未用。
 
 **未加载的 Prefab / 资源（搜索命中仅定义/无命中）**：
 - `Resources/Prefabs/Environment/Trees/*`、`Bushes/*` — 代码无任何 `Resources.Load` 引用（PROJECT_STATE 也标注「旧森林池未使用」）。
-- `Resources/Prefabs/Buildings/CubeTowers/Tower_Flamethrower_*`、`Tower_RPG_*` — `ResolveTowerType` 恒返回 `Minigun`，运行时只加载 `Tower_Minigun_{Faction}`（`UnitView.cs:254-255`）。
+- `Resources/Prefabs/Buildings/CubeTowers/Tower_Flamethrower_*`、`Tower_RPG_*` — `ResolveTowerType` 恒返回 `Minigun`，运行时只加载 `Tower_Minigun_{Faction}`（`UnitView.Tower.cs:30`）。
 - `Resources/Prefabs/Buildings/Legacy/Tower_Legacy.prefab` — 仅 TowerPrefabBuilder 备份产物。
 - `Resources/UITheme/panel_frame.png` — 无引用（HUD_UI_AUDIT §5 已确认）；MatLib.panelTex 为程序化生成。
 - `Resources/Prefabs/Units/UnitBase.prefab`（对应 `Assets/Prefabs/Units/UnitBase.prefab`）— 仅 PrefabRefs 字段引用，未加载。
@@ -248,7 +252,7 @@ Load():
 
 ### 假设 8 — UnitView 量包围盒是否跳过 ParticleSystemRenderer：**未跳过（不完整修复）**
 - **触发条件**：非塔单位（基地/墙/工人/开拓者/野兽）prefab 含粒子系统时，HP 条尺寸计算。
-- **证据**：`UnitView.EstimateHeight/EstimateWidth` 用 `GetComponentsInChildren<Renderer>()` **未过滤** `ParticleSystemRenderer` `UnitView.cs:291,304`；而 `TowerVisualController.MeasureSize` **已过滤** `TowerVisualController.cs:358`。即「粒子撑大包围盒」修复只覆盖了塔，未覆盖 `UnitView` 通用测量。
+- **证据**：`UnitView.EstimateHeight/EstimateWidth` 用 `GetComponentsInChildren<Renderer>()` **未过滤** `ParticleSystemRenderer` `UnitView.Hp.cs:15,28`；而 `TowerVisualController.MeasureSize` **已过滤** `TowerVisualController.cs:358`。即「粒子撑大包围盒」修复只覆盖了塔，未覆盖 `UnitView` 通用测量。
 - **严重度**：P2（潜在，当前野兽/角色 prefab 未必带粒子）。
 - **验证**：若某野兽 prefab 带 ParticleSystem，HP 条会异常宽高；否则无表象。需在 Editor 选中一个带粒子的单位观察血条。
 
@@ -260,7 +264,7 @@ Load():
 
 ### 假设 10 — 野兽挂在被攻击方 roles 中是否被套阵营色/SelRing：不会
 - **触发条件**：野兽出现在某队 roles 里（带 teamType）。
-- **证据**：`UnitView.EnsureRing` 仅 `type 6/7` 建 SelRing `UnitView.cs:367`；野兽走 `ConfigureFromBeastPrefab`（不调 TeamColorApplicator、不切 Model_Red/Blue）；`TeamColorApplicator` 只找 SelRing。→ 野兽无阵营色/SelRing，视觉中性。但野兽仍带 teamType，会影响事件日志的 `TeamTag` 前缀（见假设 3.4 的映射反转）。
+- **证据**：`UnitView.EnsureRing` 仅 `type 6/7` 建 SelRing `UnitView.Hp.cs:92`；野兽走 `ConfigureFromBeastPrefab`（不调 TeamColorApplicator、不切 Model_Red/Blue）；`TeamColorApplicator` 只找 SelRing。→ 野兽无阵营色/SelRing，视觉中性。但野兽仍带 teamType，会影响事件日志的 `TeamTag` 前缀（见假设 3.4 的映射反转）。
 - **严重度**：无（SelRing 正确不套野兽）。
 - **验证**：Play 到野兽出现，确认无红/蓝光圈。
 
@@ -284,7 +288,7 @@ Load():
 
 ## 6. 不建议现在重构的理由
 
-1. **UnitView 的序列化/prefab 依赖**：`_body/_hpFill/_selRing` 全靠 `transform.Find("Body"/"Visual"/"HpFill")` 按名查找，`strideCoefficient` 是 [SerializeField]；动 `UnitView` 的创建路由或字段会连锁破坏 Worker/Pioneer/NPC/Beast 多个 prefab 的运行时装配，且「改坏了只在 Play Mode 才暴露」。
+1. **UnitView 的序列化/prefab 依赖**：`_body/_hpFill/_selRing` 全靠 `transform.Find("Body"/"Visual"/"HpFill")` 按名查找，`strideCoefficient` 是 [SerializeField]；动 `UnitView` 的创建路由或字段会连锁破坏 Worker/Pioneer/NPC/Beast 多个 prefab 的运行时装配，且「改坏了只在 Play Mode 才暴露」。**2026-08-20 已用 Partial Class 完成文件拆分（类名/命名空间/GUID/字段与公开 API 零改动，13 个 Prefab 与调用方无感知）**；上述约束对「改创建路由或改字段名」仍成立。
 2. **Prefab GUID 链**：`unknow.unity → 4 个 UI prefab`、`Beast_XX → Robot Nested Prefab`、`CubeTowers/Tower_* → ProjectAssets 源塔` 三层 GUID 引用。任何一条断掉都**静默回退**到代码路径或空引用，无编译报错。
 3. **双相机并存**：`ReplayCameraRig`（机位/Free 输入）与 `CameraManager`（Auto 导播）同时写 `Camera.main`，Auto/Manual 切换靠 `SetSpectatorMode` + `enableAutoLock` 协调；重构任何一边都要两处一起验证。
 4. **UI 双轨**：~~Prefab 与 CreateFromCode 已分叉~~（2026-08-19 已删除全部 `CreateFromCode`，UI 纯 prefab 驱动，分叉风险消除；`TaskPanel` 是唯一纯代码面板）。
@@ -305,7 +309,7 @@ Load():
    - 说明：**未进 Play Mode**，故未实际验证水面（水面走 `SceneBuilder.AddWaterTile`，与本文件无关，但未运行确认）。
 
 3. **给 `UnitView.EstimateHeight/Width` 补上粒子过滤**
-   - 改：`Assets/Scripts/Scene/UnitView.cs:287-310`，`GetComponentsInChildren<Renderer>()` 处跳过 `ParticleSystemRenderer`（与 `TowerVisualController.MeasureSize` 对齐）。
+   - 改：`Assets/Scripts/Scene/UnitView.Hp.cs:15-40`，`GetComponentsInChildren<Renderer>()` 处跳过 `ParticleSystemRenderer`（与 `TowerVisualController.MeasureSize` 对齐）。
    - 禁止改：`TowerVisualController.cs`、各 prefab 的 HP 条节点。
    - 验收：带粒子的单位 HP 条不再异常宽高；塔 HP 条无回归。
 

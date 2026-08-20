@@ -29,7 +29,7 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | 文件 | 职责 |
 |------|------|
 | `Scene/SceneBuilder.cs` | **3D 地形搭建**：草地网格、森林边界、围墙、水面、NPC 站位。**性能：场景静态景物合批**（`StaticBatchAll` 用 `Mesh.CombineMeshes` 按材质分组合并草/树/围栏，2356 渲染器→14 合成网格）+ 材质共享（`GetFixedMaterial`/`GetStandardMat`/`_waterMat` 缓存） |
-| `Scene/UnitView.cs` | **单位表现核心**：Create/Configure/LateUpdate/动画/血条。**性能优化**：SetHp/SetStun/UpdateAnimation 值缓存自门控（仅 HP/眩晕/生死变化时刷新材质、写旋转、设 Animator.speed），LateUpdate 空闲跳过插值，静态 ReplayPlayer 缓存；野兽阴影/入场粒子已在 Prefab 资产源头根治；**野兽距离 LOD**（远→共享烘焙静态网格+GPU 实例化+关 Animator，近→骨骼动画）；血条全局共享材质实例化 |
+| `Scene/UnitView.cs` + 4 partial（2026-08-20 拆分） | **单位表现核心**（Partial Class）：主文件 `UnitView.cs` 字段/Create/Configure*/LateUpdate 调度/SetHp/SetStun/CalibrateBaseScale；`UnitView.Anim.cs` 动画装配与触发（SetupRobotAnimator/UpdateAnimation/TriggerAttack/TriggerDeath/AnimatorSpeed 倍速）；`UnitView.Hp.cs` 血条与光环（UpgradeHpTo3D/EnsureRing/GetSharedHpFillMat/Estimate*）；`UnitView.Lod.cs` 野兽距离 LOD（UpdateLod/SetLodStatic/LOD_RANGE 等 public static 调参）；`UnitView.Tower.cs` 塔视觉（SetupTowerVisual/TriggerTowerAttack）。**性能优化**：SetHp/SetStun/UpdateAnimation 值缓存自门控（仅 HP/眩晕/生死变化时刷新材质、写旋转、设 Animator.speed），LateUpdate 空闲跳过插值，静态 ReplayPlayer 缓存；野兽阴影/入场粒子已在 Prefab 资产源头根治；**野兽距离 LOD**（远→共享烘焙静态网格+GPU 实例化+关 Animator，近→骨骼动画）；血条全局共享材质实例化 |
 | `Scene/UnitViewSprite.cs` | **静态工具**：Sprite 扫描、颜色计算（从 UnitView 拆出） |
 | `Scene/ResourceViewManager.cs` | **矿石系统**：3D 球体 + 物理 .mat 材质 |
 | `Scene/TeamColorApplicator.cs` | **阵营标识**：仅控制脚底 SelRing 颜色（已废除全身染色） |
@@ -160,6 +160,11 @@ Create(state, parent)
 - **矿石**：ResourceViewManager 运行时生成 Sphere + Mat_Ore_XX.mat，Y-only 旋转
 - **场景合批**：`StaticBatchAll`（BuildForestSkirt/BuildPerimeterFence/草地网格末尾调用）用 `Mesh.CombineMeshes` 手动合批——**不能用 `StaticBatchingUtility.Combine`**（本环境实测无论 mesh 是否可读、物体是否 isStatic 均不产生合并网格，静默 no-op，见「已知大坑」）。做法：按材质分组 → 每组 `CombineInstance[]`（mesh + `localToWorldMatrix`）→ `CombineMeshes(comb, true, true)`（**useMatrices 必须 true**，false 时所有顶点塌缩到局部原点堆在地图中心）→ 挂 root 下合成网格 + 材质 → 禁用原物体（容器直接 `SetActive(false)`）。单组按 60k 顶点预算分块（围栏 170 段×600 顶点≈102k 必须分块）。FBX 需开 Read/Write（11 个 meta `isReadable:1`）
 
+### UnitView 拆分（2026-08-20，Partial Class）
+- `UnitView.cs` 原 818 行上帝类 → 拆为 `UnitView.cs`(341) + 4 个 partial：`UnitView.Anim.cs`(172 动画) / `UnitView.Hp.cs`(172 血条) / `UnitView.Lod.cs`(119 距离LOD) / `UnitView.Tower.cs`(58 塔视觉)。
+- 纯物理搬运：类名/命名空间/GUID/全部字段声明与公开 API 签名零改动；13 个 Prefab（仅序列化 `strideCoefficient=1`）与 ReplayPlayer 等调用方零改动。
+- `LateUpdate` 抽为调度序列：`UpdateAnimationState(isMovingNow, posChanged, moveDir)`（Anim.cs）+ `UpdateLod()`（Lod.cs）。
+
 ### 血条系统 (UnitView)
 - **3D Cube**：`Resources.GetBuiltinResource<Mesh>("Cube.fbx")`，Standard shader
 - **无底槽**：HpBar 已删除，只剩 HpFill
@@ -264,7 +269,7 @@ Create(state, parent)
 
 | 想做什么 | 文件 | 复杂度 |
 |---------|------|:---:|
-| 调血条高度/宽度 | `UnitView.cs` UpgradeHpTo3D() 中的 `_hpY`/`_hpW` 计算（野兽按 type 11-14 独立配置） | 低 |
+| 调血条高度/宽度 | `UnitView.Hp.cs` UpgradeHpTo3D() 中的 `_hpY`/`_hpW` 计算（野兽按 type 11-14 独立配置） | 低 |
 | 调野兽模型大小/高度 | Beast Prefab 中 `Visual/RobotAdjust` 的 localScale / localPosition.y / localRotation.y | 低 |
 | 换野兽 Robot | Beast Prefab 中删除旧 Robot 子节点 → 拖入新 Robot Prefab 到 RobotAdjust 下 | 低 |
 | 调树大小/概率 | `SceneBuilder.cs` BuildForestSkirt() 中的 treeProb/scale | 低 |
@@ -313,6 +318,7 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-08-20 | **UnitView.cs 拆分为 Partial Class（方案 C，0 回归）**：818 行上帝类按职责拆 5 文件——`UnitView.cs`(341 主文件：字段/Create/Configure*/LateUpdate/SetHp/SetStun) + `UnitView.Anim.cs`(172 动画装配/触发/倍速) / `UnitView.Hp.cs`(172 血条/光环) / `UnitView.Lod.cs`(119 距离LOD) / `UnitView.Tower.cs`(58 塔视觉)。纯物理搬运：类名/命名空间/GUID/字段与公开 API 签名零改动，13 个 Prefab（仅序列化 `strideCoefficient=1`）与 ReplayPlayer 等调用方零改动；`LateUpdate` 抽 `UpdateAnimationState()`+`UpdateLod()` 调度序列。编译 0 error/0 warning；Play 完整回放 906 回合 console 0 报错 |
 | 2026-08-20 | **事件日志过滤移动消息**：`ReplayPlayer.Log` 过滤「cmd + 含" 移动 "」日志（StateEngine.Diff 生成的 xx 移动 (x,y)→(x,y)）；`OnCommand` default 分支 `c.action=="move"` 不再刷日志（英文 move (x,y)）。仅显示层过滤，StateEngine/胜负判定零改动；建造/采集/贩卖/任务等事件保留。实测面板 move 类日志 0、建造等事件正常 |
 | 2026-08-20 | **远处静态机器人加轻微待机浮动 + 攻击/死亡瞬态动画**：实测"全部 156 只保持骨骼动画"会让 CPU 0.05ms→11.75ms、帧时→15ms（重新卡顿，LOD 必须保留）；在 `UnitView.LateUpdate` 给静态 LodMesh 加呼吸式上下浮动+缩放摆动（按 `state.id` 相位错开、暂停冻结，每只 2 次 Sin 可忽略）。另：`TriggerAttack`/`TriggerDeath` 时远处静态野兽临时恢复骨骼动画播放动作（冷却 2.5s+窗口 1s 限制并发，实测跳转后不加冷却会让 101/140 远处野兽全进动画 → CPU 回升）；`LateUpdate` 瞬态窗口内保持动画、窗口结束自动回静态。**全部参数已改为 public static 可运行时调**（`UnitView.LOD_RANGE / LodTransientCooldown / LodTransientWindow / LodIdleBobAmplitude / LodIdleSwayAmplitude`），详见实现记录「八、参数调优指南」 |
 | 2026-08-20 | **WebGL 野兽数量 LOD + 血条实例化 + 日志面板批量刷新（机器人多时卡顿根治）**：夜间机器人 80~156 只卡顿 → (1) `UnitView` 距离 LOD（野兽按相机 XZ 水平距离 30 两档切换，滞回 0.85 防闪烁）：远处野兽 `SkinnedMeshRenderer.BakeMesh()` 一次性烘焙**每类型共享静态网格**（4 类型=4 网格）→ `MeshRenderer`+GPU 实例化（材质 enableInstancing）+ **禁用 Animator/SkinnedMesh**；近处保留完整骨骼动画。实测第 861 回合 156 只野兽：**140 静态（89%），运行中 Animator/SkinnedMesh 156→16**。`CreateHpCube` 血条改全局共享 Standard 材质 → 156 血条 Cube 实例化。(2) **事件日志面板**：`EventLogPanelController.AddEventLog` 原逐条 `_text.text=全量字符串 + Canvas.ForceUpdateCanvases()`，夜间每回合 156 条野兽移动日志单帧重排上百次 → CPU 主线程 **11.2ms + 1s 级尖峰**；改为 `_dirty` 标记 + `LateUpdate` 每帧批量刷新一次 → **CPU 0.05ms（降 99%）**，日志内容与滚底功能保留。**关键坑（机器人变小→隐形 bug 已修）**：`BakeMesh` 烘焙在「除以渲染器 lossyScale」的世界比例空间，LOD 网格必须 `localScale` 补偿回 1/lossyScale（0.4 缩放下 ×2.5）；**绝不能除以 state.animScale** —— 野兽 "Body" 节点是空节点、不在 Robot 变换链里，animScale(出生 0→1) 不影响 Robot.lossyScale，出生瞬间转静态会被过度补偿成极小网格而隐形。修后 LOD 与骨骼版世界包围盒一致（type11 0.79 vs 0.88，中心坐标完全重合）。另坑：野兽 prefab 内 Skeleton 幽灵件有 Animator/SkinnedMesh 在 inactive GO 上（不运行零开销，勿误删）；`GetComponentInChildren<SkinnedMeshRenderer>(false)` 才取到活跃 Robot 蒙皮。Parser/StateEngine/胜负判定/防御塔 Tracer 命中环零改动 |
