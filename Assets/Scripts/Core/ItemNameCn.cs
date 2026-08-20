@@ -24,6 +24,12 @@ public static class ItemNameCn
             case "middlebeastsummonorder": return "中型野兽召唤令";
             case "largebeastsummonorder": return "大型野兽召唤令";
             case "bossbeastsummonorder": return "首领野兽召唤令";
+            case "acienttablet": return "古符石板";
+            case "starsand": return "星辰之沙";
+            case "flamebreath": return "烈焰之息";
+            case "frostpotion": return "寒霜药剂";
+            case "thornamulet": return "荆棘护符";
+            case "ironwhistle": return "回音铁哨";
             case "upgradestationmaxhp": return "基地耐久强化";
             case "upgradewallmaxhp": return "围墙耐久强化";
             case "upgradetowermaxhp": return "防御塔耐久强化";

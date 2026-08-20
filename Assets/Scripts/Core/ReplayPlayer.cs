@@ -209,6 +209,10 @@ void OnRoundEntered(int n)
     public void Log(string type, string text) { Log(type, text, ""); }
     public void Log(string type, string text, string teamType)
     {
+        // 过滤单位"移动"日志：每回合上百条野兽/工人移动刷屏，淹没建造/击杀/任务等事件。
+        // 仅显示层过滤，StateEngine 判定与胜负逻辑不受影响。
+        if (type == "cmd" && text.IndexOf(" 移动 ", System.StringComparison.Ordinal) >= 0)
+            return;
         string prefix = string.IsNullOrEmpty(teamType) ? "" : TeamTag(teamType) + "：";
         string msg = "<b>[回合" + cur + "]</b> " + prefix + text;
         if (_eventLog != null) _eventLog.AddEventLog(msg, type);
@@ -315,7 +319,7 @@ void OnRoundEntered(int n)
                 break;
             case "use":
                 {
-                    string item = string.IsNullOrEmpty(c.targetName) ? "物品" : c.targetName;
+                    string item = string.IsNullOrEmpty(c.targetName) ? "物品" : ItemNameCn.Cn(c.targetName);
                     string msg = u.DisplayName + " 使用 " + item;
                     if (c.skillTargetPos != null && c.skillTargetPos.Count > 0)
                     {
@@ -344,7 +348,9 @@ void OnRoundEntered(int n)
                 Log("cmd", u.DisplayName + " 探测 " + pos, tt);
                 break;
             default:
-                Log("cmd", u.DisplayName + " " + c.action + " " + pos, tt);
+                // 移动指令不刷日志（每回合上百条野兽/工人移动，淹没重要事件）；attack 等其余指令保留
+                if (c.action != "move")
+                    Log("cmd", u.DisplayName + " " + c.action + " " + pos, tt);
                 break;
         }
     }

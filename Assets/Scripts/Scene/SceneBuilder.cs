@@ -24,6 +24,11 @@ public static class SceneBuilder
     static List<GameObject> _grassScatter;
     static bool _forestPoolLoaded;
 
+    // 材质共享缓存：避免每个对象 new Material 破坏合批（同色立方体/同源贴图复用同一实例）
+    static readonly Dictionary<Color, Material> _stdMats = new Dictionary<Color, Material>();
+    static readonly Dictionary<string, Material> _fixedMats = new Dictionary<string, Material>();
+    static Material _waterMat;
+
     /// <summary>矿石 FBX 模型引用（供 ResourceViewManager 使用）</summary>
     public static GameObject OreRockModel;
 
@@ -65,6 +70,7 @@ public static class SceneBuilder
                 {
                     var tile = Object.Instantiate(grassPrefab, pos, Quaternion.identity, grassRoot);
                     tile.name = "Grass_" + x + "_" + z;
+                    tile.isStatic = true; // 静态标记：供 StaticBatchingUtility.Combine 运行时静态合批
                 }
                 else
                 {
@@ -74,6 +80,7 @@ public static class SceneBuilder
                     tile.transform.SetParent(grassRoot);
                     tile.transform.position = pos;
                     tile.transform.localScale = new Vector3(1.03f, 0.06f, 1.03f);
+                    tile.isStatic = true; // 静态标记：供 StaticBatchingUtility.Combine 运行时静态合批
                     var c = tile.GetComponent<Collider>();
                     if (c != null) c.enabled = false;
                 }
@@ -88,6 +95,7 @@ public static class SceneBuilder
                     float rotY = (float)(rng.NextDouble() * 360f);
                     var container = new GameObject("Tuft_" + x + "_" + z);
                     container.transform.SetParent(grassRoot);
+                    container.isStatic = true; // 静态标记：碎草是纯装饰，从不移动
                     container.transform.position = new Vector3(sx, 0f, sz);
                     container.transform.rotation = Quaternion.Euler(0, rotY, 0);
                     container.transform.localScale = new Vector3(scale, scale, scale);
@@ -98,6 +106,10 @@ public static class SceneBuilder
             }
         }
         Debug.Log("[SceneBuilder] Grass: " + (w * h) + " tiles with scatter");
+
+        // 静态批处理：草地瓦片是运行时生成的，isStatic 标记不会让 WebGL 打包时自动合并——
+        // 必须用 StaticBatchingUtility.Combine 在运行时把 ~1300 个 Draw Call 合并为个位数。
+        StaticBatchGrass(grassRoot);
 
         // ── 森林边界 + 主战场内部点缀树 ──
         BuildForestSkirt(root, map, w, h, ox, oz);
@@ -233,6 +245,8 @@ public static class SceneBuilder
             }
         }
 
+        // 静态合批：边界草地 + 树 合并为少量 Draw Call（材质已共享，FBX 已开 Read/Write）
+        StaticBatchAll(forestRoot);
         Debug.Log("[SceneBuilder] Forest: " + treeCount + " trees (border only)");
     }
 
@@ -269,6 +283,8 @@ public static class SceneBuilder
             PlaceFenceSegment(fenceRoot, fenceFbx, fenceTex, (maxX + 0.5f) - ox, oz - z, segScale, 90f, ref count);
         }
 
+        // 静态合批：~170 段围栏合并为少量 Draw Call（材质已共享）
+        StaticBatchAll(fenceRoot);
         Debug.Log("[SceneBuilder] Fence: " + count + " segments (fence24 + fence01.png)");
     }
 
@@ -292,13 +308,23 @@ public static class SceneBuilder
         for (int i = 0; i < rends.Length; i++)
         {
             if (rends[i].sharedMaterial != null)
-            {
-                Material m = new Material(rends[i].sharedMaterial);
-                m.SetColor("_Color", Color.white);
-                if (tex != null) m.mainTexture = tex;
-                rends[i].sharedMaterial = m;
-            }
+                rends[i].sharedMaterial = GetFixedMaterial(rends[i].sharedMaterial, tex);
         }
+    }
+
+    /// <summary>共享修正材质：同一（源材质+贴图）复用同一材质实例，围栏/树静态合批的前提。</summary>
+    static Material GetFixedMaterial(Material src, Texture2D tex)
+    {
+        string key = (src != null ? src.name : "") + "|" + (tex != null ? tex.name : "");
+        Material m;
+        if (!_fixedMats.TryGetValue(key, out m))
+        {
+            m = new Material(src);
+            m.SetColor("_Color", Color.white);
+            if (tex != null) m.mainTexture = tex;
+            _fixedMats[key] = m;
+        }
+        return m;
     }
 
     static void LoadForestPool()
@@ -356,6 +382,9 @@ public static class SceneBuilder
         {
             var go = Object.Instantiate(npcPrefab, root);
             go.name = "NPC_" + t + "_" + x + "_" + y;
+            // 纯数据驱动回放：NPC 是静态单位装饰，销毁物理组件（碰撞体/刚体）关闭物理引擎开销
+            foreach (var col in go.GetComponentsInChildren<Collider>(true)) Object.Destroy(col);
+            foreach (var rb in go.GetComponentsInChildren<Rigidbody>(true)) Object.Destroy(rb);
             go.transform.position = c + new Vector3(0, 0.01f, 0);
             if (t == 8) go.transform.rotation = Quaternion.Euler(0f, 135f, 0f);
             else if (t == 9) go.transform.rotation = Quaternion.Euler(0f, -45f, 0f);
@@ -410,16 +439,27 @@ public static class SceneBuilder
         var rend = go.GetComponent<Renderer>();
         if (rend != null)
         {
-            var m = new Material(Shader.Find("Standard"));
-            m.color = color;
-            m.SetFloat("_Metallic", 0f);
-            m.SetFloat("_Glossiness", 0.1f);
-            rend.sharedMaterial = m;
+            // 共享材质：同色立方体复用同一实例，避免每个对象 new Material 破坏合批
+            rend.sharedMaterial = GetStandardMat(color);
             rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             rend.receiveShadows = true;
         }
         var col = go.GetComponent<Collider>();
         if (col != null) col.enabled = false;
+    }
+
+    static Material GetStandardMat(Color color)
+    {
+        Material m;
+        if (!_stdMats.TryGetValue(color, out m))
+        {
+            m = new Material(Shader.Find("Standard"));
+            m.color = color;
+            m.SetFloat("_Metallic", 0f);
+            m.SetFloat("_Glossiness", 0.1f);
+            _stdMats[color] = m;
+        }
+        return m;
     }
 
     /// <summary>
@@ -453,6 +493,7 @@ public static class SceneBuilder
 
     static Material MakeWaterMaterial()
     {
+        if (_waterMat != null) return _waterMat; // 共享同一水面材质，避免每个水瓦片 new Material
         var m = new Material(Shader.Find("Standard"));
         m.SetFloat("_Mode", 3f); // Transparent
         m.SetOverrideTag("RenderType", "Transparent");
@@ -466,6 +507,7 @@ public static class SceneBuilder
         m.SetFloat("_Metallic", 0f);
         m.SetFloat("_Glossiness", 0f);                          // 无高光
         m.SetColor("_SpecColor", new Color(0f, 0f, 0f, 1f));    // 镜面黑，消除反光
+        _waterMat = m;
         return m;
     }
 
@@ -486,5 +528,112 @@ public static class SceneBuilder
             }
         tex.Apply(false, true);
         return tex;
+    }
+
+    /// <summary>
+    /// 运行时手动合批：把 root 下所有 MeshRenderer 按「材质」分组，每组用 Mesh.CombineMeshes 合成一张网格，
+    /// 挂到 root 上（一组一个子 MeshRenderer），再把原物体全部禁用。
+    /// 注意：不能直接用 StaticBatchingUtility.Combine —— 在本项目（2022.3 WebGL 配置）下实测无效，
+    /// 无论 mesh 是否可读、物体是否 isStatic，调用后 root 都不产生合并网格。Mesh.CombineMeshes 是确定性的。
+    /// </summary>
+    static void StaticBatchAll(Transform root)
+    {
+        // 收集可读静态 MeshRenderer（跳过 Skinned/Particle）
+        var collected = new List<Renderer>();
+        var renderers = root.GetComponentsInChildren<Renderer>(false);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var r = renderers[i];
+            if (r == null || r is SkinnedMeshRenderer || r is ParticleSystemRenderer) continue;
+            var mf = r.GetComponent<MeshFilter>();
+            if (mf == null || mf.sharedMesh == null || !mf.sharedMesh.isReadable) continue;
+            r.gameObject.isStatic = true;
+            collected.Add(r);
+        }
+        if (collected.Count == 0) return;
+
+        // 按材质分组 → 每组一个合成网格（材质不同无法合批）
+        var groups = new Dictionary<Material, List<Renderer>>();
+        for (int i = 0; i < collected.Count; i++)
+        {
+            var mat = collected[i].sharedMaterial;
+            List<Renderer> list;
+            if (!groups.TryGetValue(mat, out list)) { list = new List<Renderer>(); groups[mat] = list; }
+            list.Add(collected[i]);
+        }
+
+        var rootGo = root.gameObject;
+        var goList = new List<GameObject>();
+        foreach (var kv in groups)
+        {
+            var rendererList = kv.Value;
+            var mat = kv.Key;
+
+            // 单网格顶点上限 ~65k（WebGL 16-bit 索引）；按 60k 预算分块
+            const int kVertexBudget = 60000;
+            var chunk = new List<Renderer>();
+            int chunkVerts = 0;
+            int chunkIndex = 0;
+            for (int i = 0; i < rendererList.Count; i++)
+            {
+                var r = rendererList[i];
+                int v = r.GetComponent<MeshFilter>().sharedMesh.vertexCount;
+                if (chunk.Count > 0 && chunkVerts + v > kVertexBudget)
+                {
+                    BuildCombineChunk(rootGo, mat, chunk, rendererList.Count, chunkIndex++, goList);
+                    chunk.Clear();
+                    chunkVerts = 0;
+                }
+                chunk.Add(r);
+                chunkVerts += v;
+            }
+            if (chunk.Count > 0)
+                BuildCombineChunk(rootGo, mat, chunk, rendererList.Count, chunkIndex++, goList);
+        }
+
+        // 禁用被合并的原始物体（连同其容器，避免重复渲染）
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] == null) continue;
+            renderers[i].enabled = false;
+            var go = renderers[i].gameObject;
+            if (go != null && go.transform.parent != null && go.transform.parent != root)
+                go.transform.parent.gameObject.SetActive(false);
+        }
+    }
+
+    /// <summary>把一组同材质渲染器合成一张网格，挂到 root 下。</summary>
+    static void BuildCombineChunk(GameObject rootGo, Material mat, List<Renderer> list, int totalCount, int chunkIndex, List<GameObject> goList)
+    {
+        var comb = new CombineInstance[list.Count];
+        for (int i = 0; i < list.Count; i++)
+        {
+            comb[i].mesh = list[i].GetComponent<MeshFilter>().sharedMesh;
+            comb[i].transform = list[i].transform.localToWorldMatrix;
+        }
+        var combinedMesh = new Mesh();
+        // useMatrices 必须为 true：否则 CombineInstance.transform 被忽略，所有顶点塌缩到局部原点（全堆在地图中心）。
+        combinedMesh.CombineMeshes(comb, true, true);
+
+        var go = new GameObject("Batch_" + totalCount + (chunkIndex > 0 ? "_" + chunkIndex : "") + "_" + mat.name);
+        go.transform.SetParent(rootGo.transform, false);
+        go.transform.position = Vector3.zero;       // 网格已是世界坐标
+        go.transform.rotation = Quaternion.identity;
+        go.transform.localScale = Vector3.one;
+        go.isStatic = true;
+        go.AddComponent<MeshFilter>().sharedMesh = combinedMesh;
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        // 保持原视觉：草地/树/围栏原本都投影且接收阴影。
+        // 合批后 14 个合成网格投影，比 2356 个独立渲染器投影的阴影深度 pass 少得多。
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        mr.receiveShadows = true;
+        goList.Add(go);
+    }
+
+    /// <summary>草地合批（草地瓦片 + 碎草装饰一起走 StaticBatchAll）。</summary>
+    static void StaticBatchGrass(Transform grassRoot)
+    {
+        StaticBatchAll(grassRoot);
     }
 }

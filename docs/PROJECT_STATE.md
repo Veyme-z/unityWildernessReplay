@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-19
+> **最后更新**：2026-08-20
 
 ---
 
@@ -28,8 +28,8 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 ### 场景 & 表现
 | 文件 | 职责 |
 |------|------|
-| `Scene/SceneBuilder.cs` | **3D 地形搭建**：草地网格、森林边界、围墙、水面、NPC 站位 |
-| `Scene/UnitView.cs` | **单位表现核心**：Create/Configure/LateUpdate/动画/血条。**性能优化**：SetHp/SetStun/UpdateAnimation 值缓存自门控（仅 HP/眩晕/生死变化时刷新材质、写旋转、设 Animator.speed），LateUpdate 空闲跳过插值，静态 ReplayPlayer 缓存；野兽阴影/入场粒子已在 Prefab 资产源头根治，无运行时补救代码 |
+| `Scene/SceneBuilder.cs` | **3D 地形搭建**：草地网格、森林边界、围墙、水面、NPC 站位。**性能：场景静态景物合批**（`StaticBatchAll` 用 `Mesh.CombineMeshes` 按材质分组合并草/树/围栏，2356 渲染器→14 合成网格）+ 材质共享（`GetFixedMaterial`/`GetStandardMat`/`_waterMat` 缓存） |
+| `Scene/UnitView.cs` | **单位表现核心**：Create/Configure/LateUpdate/动画/血条。**性能优化**：SetHp/SetStun/UpdateAnimation 值缓存自门控（仅 HP/眩晕/生死变化时刷新材质、写旋转、设 Animator.speed），LateUpdate 空闲跳过插值，静态 ReplayPlayer 缓存；野兽阴影/入场粒子已在 Prefab 资产源头根治；**野兽距离 LOD**（远→共享烘焙静态网格+GPU 实例化+关 Animator，近→骨骼动画）；血条全局共享材质实例化 |
 | `Scene/UnitViewSprite.cs` | **静态工具**：Sprite 扫描、颜色计算（从 UnitView 拆出） |
 | `Scene/ResourceViewManager.cs` | **矿石系统**：3D 球体 + 物理 .mat 材质 |
 | `Scene/TeamColorApplicator.cs` | **阵营标识**：仅控制脚底 SelRing 颜色（已废除全身染色） |
@@ -158,6 +158,7 @@ Create(state, parent)
 - **碎草散布**：33% 概率，scale 0.15~0.3，KayKit Grass_1/2 FBX
 - **水面跳过**：碎草和树灌不在水域生成
 - **矿石**：ResourceViewManager 运行时生成 Sphere + Mat_Ore_XX.mat，Y-only 旋转
+- **场景合批**：`StaticBatchAll`（BuildForestSkirt/BuildPerimeterFence/草地网格末尾调用）用 `Mesh.CombineMeshes` 手动合批——**不能用 `StaticBatchingUtility.Combine`**（本环境实测无论 mesh 是否可读、物体是否 isStatic 均不产生合并网格，静默 no-op，见「已知大坑」）。做法：按材质分组 → 每组 `CombineInstance[]`（mesh + `localToWorldMatrix`）→ `CombineMeshes(comb, true, true)`（**useMatrices 必须 true**，false 时所有顶点塌缩到局部原点堆在地图中心）→ 挂 root 下合成网格 + 材质 → 禁用原物体（容器直接 `SetActive(false)`）。单组按 60k 顶点预算分块（围栏 170 段×600 顶点≈102k 必须分块）。FBX 需开 Read/Write（11 个 meta `isReadable:1`）
 
 ### 血条系统 (UnitView)
 - **3D Cube**：`Resources.GetBuiltinResource<Mesh>("Cube.fbx")`，Standard shader
@@ -171,6 +172,8 @@ Create(state, parent)
 - **LateUpdate 空闲跳过**：`isMoving==false` 不插值；`TowerVisualController` 无活跃效果（aim/recoil/flash/particles/tracer/hitRing）时只对齐待机朝向并提前返回
 - **静态缓存**：`s_cachedPlayer` 复用 ReplayPlayer，避免大量单位各自 `FindObjectOfType`
 - **野兽渲染瘦身**：阴影与入场粒子在 Prefab 资产源头关闭/删除（见第三节），运行时零遍历补救
+- **场景静态景物合批（2026-08-20）**：草 1615 + 森林 571 + 围栏 170 = 2356 渲染器 → `Mesh.CombineMeshes` 手动合批为 **14 个合成网格**（每个材质组 1 个，合成网格保留投影/接收阴影保持原视觉）。启用中 MeshRenderer 由 ~2797 → ~400（随单位数波动）。GPU 帧时编辑器内 21ms→12ms 量级
+- **野兽距离 LOD + GPU 实例化（2026-08-20）**：夜间机器人 80~156 只时卡顿（实测第 861 回合 156 只野兽：活跃 Animator **164**、活跃 SkinnedMesh **214**，帧时 GPU 14ms / CPU 12ms）。`UnitView` 新增距离 LOD：野兽按**相机 XZ 水平距离**（阈值 30，静态化/恢复用 0.85 滞回防边界闪烁）两档切换——远（≥30）用 `SkinnedMeshRenderer.BakeMesh()` 一次性烘焙为**共享静态网格**（每种野兽类型仅烘焙一次，4 类型 = 4 网格），改渲 `MeshRenderer` + **GPU Instancing**（材质 `enableInstancing=true`，远处全部机器人仅 ~4 次 DrawCall）并**禁用 Animator + SkinnedMesh**（省动画 CPU + 蒙皮 GPU）；近（<25.5）恢复完整骨骼动画。实测 861 回合：**156 → 140 静态（89%），运行中 Animator/Skinned 仅 16**。另：`CreateHpCube` 血条改**全局共享 Standard 材质 + enableInstancing**（原每体 `new Material` 破坏合批），156 个血条 Cube 合成实例化批。冻结姿势由「第一只进入远处状态的野兽当时的姿势」提供，可接受
 
 ### 动画系统
 - **步幅对齐**：`_animator.speed = Clamp(realSpeed * strideCoefficient, 0.15, 4.5) * AnimatorSpeed`
@@ -298,6 +301,7 @@ Create(state, parent)
 | **Minigun 源塔 Muzzle 节点默认禁用** | Cube Tower Defense 源 prefab 里 Minigun 的 `Muzzle` 节点 `activeSelf=false`（原游戏脚本负责开火时激活）。若直接 `Play()` 粒子，`isPlaying` 永远 false。`TowerVisualController.Setup()` 里已先设 `playOnAwake=false` 再 `_muzzlePoint.SetActive(true)` |
 | **ParticleSystemRenderer 撑大包围盒** | 粒子拖尾/射击流会把 `GetComponentsInChildren<Renderer>().bounds` 撑到 9+ 单位，导致血条过宽过高。测模型尺寸必须跳过 `ParticleSystemRenderer`（`TowerVisualController.MeasureSize()` 已处理） |
 | **MainModule 是结构体** | `var m = ps.main; m.playOnAwake = false;` 这种写法有效（MainModule 属性 setter 直写原生对象），但不要对 `ps.main` 整体赋值 |
+| **StaticBatchingUtility.Combine 在本项目无效** | 2022.3 本工程实测：无论 mesh 是否 `isReadable`、物体是否 `isStatic`、单参/双参重载，调用后 root 都不产生合并网格（子物体照常独立渲染，console 无任何报错，静默 no-op）。场景合批必须用 `Mesh.CombineMeshes` 手动合批（见「性能优化」）。且 `CombineMeshes` 的 `useMatrices` 必须传 `true`（false 会忽略 `CombineInstance.transform`，全部顶点塌缩到局部原点堆在地图中心——验证网格 `bounds` 即可发现） |
 | **legacy TextMesh + Dynamic 字体在 WebGL 隐形** | 世界空间 `TextMesh`（3D 文本，非 uGUI `Text`）赋 Dynamic 字体（NotoSansSC）后在 WebGL 两个坑：① 不主动请求字形 → **中文空白**（需 `font.RequestCharactersInTexture(text, fontSize, style)`）；② 不自动把 `MeshRenderer.sharedMaterial` 同步成 `font.material` → **整个文本隐形，连数字/英文都不显示**（需 `mr.sharedMaterial = font.material`）。uGUI `Text` 无此问题（内部订阅 `textureRebuilt`）。见 `UiFonts.PrewarmWorldText()` / `TradeBadge.SetText` |
 | **WebGL "Insecure connection not allowed"** | HTTP 页面下 `UnityWebRequest.Get(绝对 http://URL)` 抛 `InvalidOperationException`。`ReplayEntry.RelativeStreamingUrl()` 把 `Application.streamingAssetsPath` 归一化为「相对当前网页」路径（剥掉协议+host，协议跟随页面），`LoadWebText()` 同步段包 try/catch 兜底走 demo，异常不中断初始化 |
 
@@ -305,8 +309,14 @@ Create(state, parent)
 
 ## 八、近期改动
 
+> 📄 详细实现文档见 [夜间机器人卡顿优化_实现记录.md](夜间机器人卡顿优化_实现记录.md)（2026-08-20 夜间卡顿的完整改动方法、代码、关键坑）。
+
 | 日期 | 改动 |
 |------|------|
+| 2026-08-20 | **事件日志过滤移动消息**：`ReplayPlayer.Log` 过滤「cmd + 含" 移动 "」日志（StateEngine.Diff 生成的 xx 移动 (x,y)→(x,y)）；`OnCommand` default 分支 `c.action=="move"` 不再刷日志（英文 move (x,y)）。仅显示层过滤，StateEngine/胜负判定零改动；建造/采集/贩卖/任务等事件保留。实测面板 move 类日志 0、建造等事件正常 |
+| 2026-08-20 | **远处静态机器人加轻微待机浮动 + 攻击/死亡瞬态动画**：实测"全部 156 只保持骨骼动画"会让 CPU 0.05ms→11.75ms、帧时→15ms（重新卡顿，LOD 必须保留）；在 `UnitView.LateUpdate` 给静态 LodMesh 加呼吸式上下浮动+缩放摆动（按 `state.id` 相位错开、暂停冻结，每只 2 次 Sin 可忽略）。另：`TriggerAttack`/`TriggerDeath` 时远处静态野兽临时恢复骨骼动画播放动作（冷却 2.5s+窗口 1s 限制并发，实测跳转后不加冷却会让 101/140 远处野兽全进动画 → CPU 回升）；`LateUpdate` 瞬态窗口内保持动画、窗口结束自动回静态。**全部参数已改为 public static 可运行时调**（`UnitView.LOD_RANGE / LodTransientCooldown / LodTransientWindow / LodIdleBobAmplitude / LodIdleSwayAmplitude`），详见实现记录「八、参数调优指南」 |
+| 2026-08-20 | **WebGL 野兽数量 LOD + 血条实例化 + 日志面板批量刷新（机器人多时卡顿根治）**：夜间机器人 80~156 只卡顿 → (1) `UnitView` 距离 LOD（野兽按相机 XZ 水平距离 30 两档切换，滞回 0.85 防闪烁）：远处野兽 `SkinnedMeshRenderer.BakeMesh()` 一次性烘焙**每类型共享静态网格**（4 类型=4 网格）→ `MeshRenderer`+GPU 实例化（材质 enableInstancing）+ **禁用 Animator/SkinnedMesh**；近处保留完整骨骼动画。实测第 861 回合 156 只野兽：**140 静态（89%），运行中 Animator/SkinnedMesh 156→16**。`CreateHpCube` 血条改全局共享 Standard 材质 → 156 血条 Cube 实例化。(2) **事件日志面板**：`EventLogPanelController.AddEventLog` 原逐条 `_text.text=全量字符串 + Canvas.ForceUpdateCanvases()`，夜间每回合 156 条野兽移动日志单帧重排上百次 → CPU 主线程 **11.2ms + 1s 级尖峰**；改为 `_dirty` 标记 + `LateUpdate` 每帧批量刷新一次 → **CPU 0.05ms（降 99%）**，日志内容与滚底功能保留。**关键坑（机器人变小→隐形 bug 已修）**：`BakeMesh` 烘焙在「除以渲染器 lossyScale」的世界比例空间，LOD 网格必须 `localScale` 补偿回 1/lossyScale（0.4 缩放下 ×2.5）；**绝不能除以 state.animScale** —— 野兽 "Body" 节点是空节点、不在 Robot 变换链里，animScale(出生 0→1) 不影响 Robot.lossyScale，出生瞬间转静态会被过度补偿成极小网格而隐形。修后 LOD 与骨骼版世界包围盒一致（type11 0.79 vs 0.88，中心坐标完全重合）。另坑：野兽 prefab 内 Skeleton 幽灵件有 Animator/SkinnedMesh 在 inactive GO 上（不运行零开销，勿误删）；`GetComponentInChildren<SkinnedMeshRenderer>(false)` 才取到活跃 Robot 蒙皮。Parser/StateEngine/胜负判定/防御塔 Tracer 命中环零改动 |
+| 2026-08-20 | **WebGL 场景静态合批 + 材质共享**：`SceneBuilder.StaticBatchAll` 改用 `Mesh.CombineMeshes` 手动合批（草 1615+森林 571+围栏 170=**2356 渲染器→14 合成网格**，按材质分组、60k 顶点分块、`useMatrices=true`）；`GetFixedMaterial`/`GetStandardMat`/`MakeWaterMaterial` 材质缓存去重（避免同材质每物体 new 实例破坏合批）；11 个树/草/围栏 FBX meta 开 Read/Write。启用中 MeshRenderer 2797→约 400。**关键坑**：`StaticBatchingUtility.Combine` 本环境静默无效必须手写；`CombineMeshes` 忘传 `useMatrices=true` 会把全部景物堆到地图中心（用 bounds 验证已修复）。Parser/StateEngine/胜负判定零改动 |
 | 2026-08-19 | **修复基地对齐 + 调试文字格式**：基地(type=4) 的锚点 (x,y) 实为 2×2 的**左上角格**（占地 x..x+1, y-1..y），`ReplayState.UnitWorldPos` 中心偏移从 `+0.5/+0.5` 改为 `+0.5/-0.5`（原写法使建筑偏北 1 格，中心落在基地四格外）；同时移除 `UnitView.CalibrateBaseScale` 的 `_pivotOffset` Z 偏移（实测 Base.prefab Model_Red/Blue 均 X/Z 居中）。`UnitDebugOverlay` 文字改黑色、格式 `ID: 12 | Pos: (10, 24) | HP: 100 | ATK: 15`（空格分隔、坐标无小数、ATK 0 明确显示），基地显示 2×2 **左上角格坐标**。实测：红方基地(30,10)、蓝方(10,24) 的建筑中心与四格中心重合，overlay 显示 `Pos: (30, 10)` / `(10, 24)` |
 | 2026-08-19 | **单位调试悬浮文字（全局「显示」开关）**：底部面板 ControlBar 新增 `Btn_ShowStats`「显示」按钮，切换 `PlaybackControlPanelController.ShowUnitStats`（默认关，点击取反 + 琥珀色高亮）；新增 `UnitDebugOverlay.cs`（`UnitView.ConfigureFromUnitPrefab` 末尾挂载，围墙 type5/野兽≥11 内部过滤不渲染），开启时非围墙/非野兽单位头顶显示 `[ID|Pos|HP|ATK]`（0.5s 节流 + hp/pos/ap 脏检查重建文本，关闭/死亡时 TextMesh 停用零渲染） |
 | 2026-08-19 | **播放面板维护**：ControlBar 560→680（新增「自由」按钮后 10 个按钮共需 590px，修复「自动」溢出边框）；新增镜头按钮 `CamFree`「自由」（对应键盘 4，`WireCallbacks` 自动接线）；TeamBar/ControlBar 改用 `HorizontalLayoutGroup` 自动排布 |

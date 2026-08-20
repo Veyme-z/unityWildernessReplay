@@ -36,6 +36,8 @@ public class EventLogPanelController : MonoBehaviour
         return ctrl;
     }
 
+    bool _dirty;
+
     public void AddEventLog(string message, string category)
     {
         Color c = CategoryColor(category);
@@ -49,6 +51,15 @@ public class EventLogPanelController : MonoBehaviour
             if (nl >= 0) _sb.Remove(0, nl + 1);
         }
 
+        // 仅标记脏，统一在 LateUpdate 每帧批量刷新一次——
+        // 夜间每回合上百条移动日志，若逐条 _text.text=全量字符串 + ForceUpdateCanvases 会单帧重排上百次（1s+ 卡顿）。
+        _dirty = true;
+    }
+
+    void LateUpdate()
+    {
+        if (!_dirty || _text == null) return;
+        _dirty = false;
         _text.text = _sb.ToString();
 
         // 刷新布局后滚底

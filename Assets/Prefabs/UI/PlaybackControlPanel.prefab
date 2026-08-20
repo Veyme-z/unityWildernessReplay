@@ -244,6 +244,7 @@ MonoBehaviour:
   _btnManual: {fileID: 0}
   _btnAuto: {fileID: 0}
   _directorStatus: {fileID: 0}
+  _showStatsBtn: {fileID: 0}
 --- !u!1 &366102835157512286
 GameObject:
   m_ObjectHideFlags: 0
@@ -280,8 +281,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: -40, y: 20}
+  m_AnchoredPosition: {x: 0, y: -9}
+  m_SizeDelta: {x: -40, y: 10}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &4742162903409595694
 MonoBehaviour:
@@ -3980,7 +3981,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 0, y: -4}
+  m_AnchoredPosition: {x: 0, y: -2}
   m_SizeDelta: {x: 200, y: 20}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &4091094416697170544

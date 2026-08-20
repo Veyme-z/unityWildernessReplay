@@ -116,11 +116,12 @@ public class TradeBadge : MonoBehaviour
     void SetText(string itemName, int qty, float bgScale = 1f)
     {
         if (_tm == null) return;
+        string key = (itemName ?? "").ToLowerInvariant();
         if (string.IsNullOrEmpty(itemName) || qty <= 0)
         {
             _tm.text = "购买";
         }
-        else if (itemName == "copper" || itemName == "iron" || itemName == "stone")
+        else if (key == "copper" || key == "iron" || key == "stone")
         {
             _tm.text = "贩卖了 " + CnName(itemName) + " x" + qty;
         }
@@ -141,7 +142,7 @@ public class TradeBadge : MonoBehaviour
     void SetCollectText(string itemName, int qty, float bgScale = 1f)
     {
         if (_tm == null) return;
-        _tm.text = "采集 " + (string.IsNullOrEmpty(itemName) ? "资源" : itemName) + "*" + qty;
+        _tm.text = "采集 " + (string.IsNullOrEmpty(itemName) ? "资源" : CnName(itemName)) + "*" + qty;
         ApplyText(_tm.text, bgScale);
     }
 

@@ -22,6 +22,10 @@ public class ReplayEntry : MonoBehaviour
 
     void Awake()
     {
+        // WebGL 性能：锁定 60fps + 关闭垂直同步，防止浏览器无限制渲染超高帧率导致 CPU 满载发热
+        Application.targetFrameRate = 60;
+        QualitySettings.vSyncCount = 0;
+
         if (_instance != null && _instance != this)
         {
             Destroy(gameObject);

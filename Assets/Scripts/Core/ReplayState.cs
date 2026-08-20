@@ -221,19 +221,19 @@ public class StateEngine
                         if (kv.Value > prevN)
                         {
                             var u = GetUnit(r.id);
-                            if (u != null) host.Log("cmd", u.name + " 获得 " + kv.Key + " x" + (kv.Value - prevN), t.type);
+                            if (u != null) host.Log("cmd", u.name + " 获得 " + ItemNameCn.Cn(kv.Key) + " x" + (kv.Value - prevN), t.type);
                         }
                         else if (kv.Value < prevN)
                         {
                             var u = GetUnit(r.id);
-                            if (u != null) host.Log("cmd", u.name + " 消耗 " + kv.Key + " x" + (prevN - kv.Value), t.type);
+                            if (u != null) host.Log("cmd", u.name + " 消耗 " + ItemNameCn.Cn(kv.Key) + " x" + (prevN - kv.Value), t.type);
                         }
                     }
                     foreach (var kv in pBp)
                         if (!nBp.ContainsKey(kv.Key))
                         {
                             var u = GetUnit(r.id);
-                            if (u != null) host.Log("cmd", u.name + " 消耗 " + kv.Key + " x" + kv.Value, t.type);
+                            if (u != null) host.Log("cmd", u.name + " 消耗 " + ItemNameCn.Cn(kv.Key) + " x" + kv.Value, t.type);
                         }
                 }
 

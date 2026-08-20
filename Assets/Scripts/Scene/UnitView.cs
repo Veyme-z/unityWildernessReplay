@@ -23,6 +23,26 @@ public class UnitView : MonoBehaviour
     bool _hasParams = true;
     TowerVisualController _towerVisual;
 
+    // ── 野兽距离 LOD（远处降级为静态烘焙网格 + GPU 实例化，省 Animator CPU 与蒙皮 GPU） ──
+    SkinnedMeshRenderer _skinned;   // 野兽 Robot 的活跃蒙皮渲染器
+    GameObject _lodGo;              // 远处静态网格宿主
+    bool _lodStatic;                // 当前是否处于静态 LOD 态
+    Vector3 _lodBaseScale = Vector3.one; // 静态 LOD 网格基准缩放（1/lossyScale 补偿后，待机浮动在其上叠加）
+    float _transientAnimUntil = 0f; // 远处野兽攻击/死亡时临时恢复动画的截止时间（真实时间）
+    float _lastTransientEnter = -10f; // 上次进入瞬态动画的时间（冷却用，避免频繁攻击的野兽一直保持动画）
+    /// <summary>距离 LOD 调参（public static，运行时可用 execute_code / 调试工具直接改值，无需重编译）：
+    /// LOD_RANGE=相机 XZ 距离阈值，调大→更多野兽动画(CPU↑)，调小→更少；受相机位置影响大，建议保持 30。
+    /// LodTransientCooldown=远处野兽攻击瞬态冷却秒数，调小→攻击动作更频繁(CPU↑)，调大→更稀疏。
+    /// LodTransientWindow=每次攻击瞬态动画持续秒数，调大→动作更完整(并发↑)。
+    /// LodIdleBobAmplitude/LodIdleSwayAmplitude=静态待机浮动上下幅度/缩放幅度，纯视觉、CPU≈0。</summary>
+    public static float LOD_RANGE = 30f;
+    public static float LodTransientCooldown = 2.5f;
+    public static float LodTransientWindow = 1f;
+    public static float LodIdleBobAmplitude = 0.03f;
+    public static float LodIdleSwayAmplitude = 0.012f;
+    static readonly Dictionary<int, Mesh> s_lodMeshCache = new Dictionary<int, Mesh>(); // 每类型共享一份烘焙网格
+    static Camera s_camera;         // 复用 Camera.main 缓存
+
     // ── 平滑转向 ──
     Vector3 _prevPos;
     float _prevAnimScale = 1f;
@@ -98,9 +118,17 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         return gv;
     }
 
+    /// <summary>纯数据驱动回放：销毁单位身上所有物理组件（碰撞体/刚体），关闭后台物理引擎计算开销。</summary>
+    void StripPhysics()
+    {
+        foreach (var col in GetComponentsInChildren<Collider>(true)) { Object.Destroy(col); }
+        foreach (var rb in GetComponentsInChildren<Rigidbody>(true)) { Object.Destroy(rb); }
+    }
+
     /// <summary>从 Beast Prefab 实例化后配置引用（模型已在 Prefab 中）。</summary>
     void ConfigureFromBeastPrefab()
     {
+        StripPhysics();
         _lockRotation = false;
         _prevPos = transform.position;
 
@@ -126,6 +154,9 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             _animator.applyRootMotion = false;
             SetupRobotAnimator();
         }
+
+        // 距离 LOD：仅野兽启用；(false) 排除 inactive 的 Skeleton 幽灵件，取活跃 Robot 蒙皮
+        _skinned = GetComponentInChildren<SkinnedMeshRenderer>(false);
 
         var pv = GetComponentInChildren<Pickable>();
         if (pv != null) pv.view = this;
@@ -165,6 +196,7 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
     /// <summary>从 Unit Prefab（Worker/Pioneer/NPC）实例化后，找到子节点引用并配置队伍颜色</summary>
     void ConfigureFromUnitPrefab()
     {
+        StripPhysics();
         // 建筑(3/4/5) 和 NPC(8/9) 锁死旋转；Worker(6)/Pioneer(7) 允许转身
         bool isBuilding = (state.type == 3 || state.type == 4 || state.type == 5 || state.type == 10);
         _lockRotation = isBuilding || (state.type == 8 || state.type == 9);
@@ -240,6 +272,7 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         float targetW = state.type == 4 ? 2f : (state.type >= 6 && state.type <= 9) ? 1.5f : 1f;
         CalibrateBaseScale(targetW);
         SetHp(state.hp, state.maxHp);
+        StripPhysics(); // 二次剥离：防御塔视觉包装(Tower_*_Red/Blue)是此时才实例化的，内部自带碰撞体需一并销毁
 
         // 调试悬浮文字（围墙/野兽在组件内部自行过滤；野兽路径不走本方法）
         gameObject.AddComponent<UnitDebugOverlay>();
@@ -382,7 +415,7 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             _hpFill.localScale = new Vector3(_hpW, _hpThick, 0.02f);
             if (_hpFillRend == null) _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
             if (_hpFillRend != null && (_hpFillRend.sharedMaterial.name.Contains("Default") || _hpFillRend.sharedMaterial.shader.name != "Standard"))
-                _hpFillRend.sharedMaterial = new Material(Shader.Find("Standard")) { color = new Color(0.267f, 0.925f, 0.435f) };
+                _hpFillRend.sharedMaterial = GetSharedHpFillMat();
         }
         _hpFill.localPosition = new Vector3(0, _hpY, 0);
         _hpFill.localRotation = Quaternion.identity;
@@ -483,6 +516,15 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
     /// <summary>触发攻击动画</summary>
     public void TriggerAttack()
     {
+        // 远处静态野兽攻击时临时恢复骨骼动画（播放攻击动作，随后自动回静态）。
+        // 冷却 2.5s + 窗口 1.0s（占空比 ~40%）：频繁攻击的野兽只在一部分攻击时动画，限制并发动画数，
+        // 否则夜间上百只野兽同时攻击会全部进动画 → CPU 回升（实测跳转后 101/140 远处野兽动画）。
+        if (_lodStatic && _skinned != null && Time.time - _lastTransientEnter > LodTransientCooldown)
+        {
+            _lastTransientEnter = Time.time;
+            _transientAnimUntil = Time.time + LodTransientWindow;
+            SetLodStatic(false);
+        }
         if (_animator == null) return;
         try
         {
@@ -515,6 +557,12 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
     /// <summary>触发死亡动画</summary>
     public void TriggerDeath()
     {
+        // 远处静态野兽死亡时临时恢复骨骼动画，播放死亡动作后再随视图销毁
+        if (_lodStatic && _skinned != null)
+        {
+            _transientAnimUntil = Time.time + 1.2f;
+            SetLodStatic(false);
+        }
         if (_animator == null) return;
         try
         {
@@ -524,6 +572,22 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         catch (System.Exception) { }
     }
 
+    /// <summary>所有单位共享同一份血条材质（开启实例化 → 上百血条 Cube 合成一次实例化批，避免每体独立材质造成大量 DrawCall）。</summary>
+    static Material s_hpFillMat;
+    static Material GetSharedHpFillMat()
+    {
+        if (s_hpFillMat == null)
+        {
+            // Standard shader 确保 MPB 变色和 3D 光照正常
+            s_hpFillMat = new Material(Shader.Find("Standard"));
+            s_hpFillMat.color = new Color(0.267f, 0.925f, 0.435f);
+            s_hpFillMat.SetFloat("_Metallic", 0f);
+            s_hpFillMat.SetFloat("_Glossiness", 0.2f);
+            s_hpFillMat.enableInstancing = true;
+        }
+        return s_hpFillMat;
+    }
+
     Transform CreateHpCube(Transform parent, string name, Vector3 size, Color color, Mesh cubeMesh)
     {
         var go = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
@@ -531,12 +595,7 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
         go.transform.localScale = size;
         go.GetComponent<MeshFilter>().sharedMesh = cubeMesh;
         var rend = go.GetComponent<MeshRenderer>();
-        // Standard shader 确保 MPB 变色和 3D 光照正常
-        var mat = new Material(Shader.Find("Standard"));
-        mat.color = color;
-        mat.SetFloat("_Metallic", 0f);
-        mat.SetFloat("_Glossiness", 0.2f);
-        rend.sharedMaterial = mat;
+        rend.sharedMaterial = GetSharedHpFillMat();
         rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         rend.receiveShadows = false;
         return go.transform;
@@ -631,6 +690,99 @@ public static float AnimatorSpeed = 1f; // 由 ReplayPlayer 同步播放倍速
             catch (System.Exception) { }
         }
 
+        // ── 野兽距离 LOD：远处降级为静态烘焙网格（省 Animator CPU + 蒙皮 GPU） ──
+        if (_skinned != null && _animator != null)
+        {
+            if (s_camera == null) s_camera = Camera.main;
+            if (s_camera != null)
+            {
+                // 用相机 XZ 水平距离（相机固定高度不参与，平移/缩放时响应自然）
+                Vector3 camPos = s_camera.transform.position;
+                Vector3 delta = new Vector3(camPos.x - transform.position.x, 0f, camPos.z - transform.position.z);
+                float d2 = delta.sqrMagnitude;
+                // 滞回区间：静态化用 LOD_RANGE，恢复动画用 0.85*LOD_RANGE，避免边界来回切换闪烁
+                bool far = _lodStatic
+                    ? d2 >= LOD_RANGE * 0.85f * LOD_RANGE * 0.85f
+                    : d2 >= LOD_RANGE * LOD_RANGE;
+                // 攻击/死亡瞬态窗口内保持动画（远处野兽攻击时也能看到动作，窗口结束自动回静态）
+                if (far && Time.time < _transientAnimUntil) far = false;
+                if (far != _lodStatic) SetLodStatic(far);
+
+                // 远处静态机器人轻微待机浮动：呼吸式上下浮动 + 缩放摆动，避免死板雕像。
+                // 每只相位按 id 错开，视觉更自然；暂停时冻结。成本 ≈ 每只 2 次 Sin，可忽略。
+                if (_lodStatic && _lodGo != null)
+                {
+                    bool replayPlaying = _player == null || _player.playing;
+                    if (replayPlaying)
+                    {
+                        float ph = (float)(state.id % 997) * 0.618f;   // 每只错开相位
+                        float t = Time.time % 100f;                    // 包裹避免大数精度问题
+                        float bob = Mathf.Sin(t * 2.4f + ph) * LodIdleBobAmplitude;
+                        _lodGo.transform.localPosition = new Vector3(0f, bob, 0f);
+                        float s = 1f + Mathf.Sin(t * 1.8f + ph * 1.3f) * LodIdleSwayAmplitude;
+                        _lodGo.transform.localScale = new Vector3(_lodBaseScale.x * s, _lodBaseScale.y * s, _lodBaseScale.z * s);
+                    }
+                    else
+                    {
+                        _lodGo.transform.localPosition = Vector3.zero;
+                        _lodGo.transform.localScale = _lodBaseScale;
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>野兽距离 LOD 切换：静态态 = 禁用 Animator + 蒙皮，改渲共享烘焙网格（GPU 实例化）。</summary>
+    void SetLodStatic(bool toStatic)
+    {
+        _lodStatic = toStatic;
+        if (toStatic)
+        {
+            // 共享材质开启实例化（幂等；蒙皮渲染器不受影响，仍正常渲染）
+            var mat = _skinned.sharedMaterial;
+            if (mat != null) mat.enableInstancing = true;
+
+            // 共享网格：每野兽类型只烘焙一次（姿势取第一只进入远处状态的当时的姿势）
+            Mesh sharedMesh;
+            if (!s_lodMeshCache.TryGetValue(state.type, out sharedMesh) || sharedMesh == null)
+            {
+                sharedMesh = new Mesh();
+                _skinned.BakeMesh(sharedMesh);
+                s_lodMeshCache[state.type] = sharedMesh;
+            }
+
+            if (_lodGo == null)
+            {
+                _lodGo = new GameObject("LodMesh");
+                // 挂在 Robot 同一 transform 下、零偏移
+                _lodGo.transform.SetParent(_skinned.transform, false);
+                var mf = _lodGo.AddComponent<MeshFilter>();
+                mf.sharedMesh = sharedMesh;
+                var mr = _lodGo.AddComponent<MeshRenderer>();
+                mr.sharedMaterials = _skinned.sharedMaterials;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                mr.receiveShadows = false;
+            }
+            // BakeMesh 烘焙在「除以渲染器 lossyScale」的世界比例空间：必须把 LOD 渲染器 lossyScale 补偿回 1，
+            // 否则在野兽根节点缩放(0.4)下会渲染得比骨骼版小 1/0.4≈2.5 倍（机器人变小的 bug）。
+            // 注意：不能除以 state.animScale —— 野兽的 "Body" 节点是空节点、不在 Robot 变换链里，
+            // animScale(出生缩放 0→1) 不影响 Robot.lossyScale；若在出生瞬间转静态会被过度补偿成极小网格（远处隐形的 bug）。
+            var lossy = _skinned.transform.lossyScale;
+            _lodGo.transform.localScale = new Vector3(
+                lossy.x > 0.0001f ? 1f / lossy.x : 1f,
+                lossy.y > 0.0001f ? 1f / lossy.y : 1f,
+                lossy.z > 0.0001f ? 1f / lossy.z : 1f);
+            _lodBaseScale = _lodGo.transform.localScale;
+            _lodGo.SetActive(true);
+            _skinned.enabled = false;
+            _animator.enabled = false;
+        }
+        else
+        {
+            _skinned.enabled = true;
+            _animator.enabled = true;
+            if (_lodGo != null) _lodGo.SetActive(false);
+        }
     }
 
     public void SetAnimScale(float s) { state.animScale = s; }
