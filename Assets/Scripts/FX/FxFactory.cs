@@ -19,8 +19,16 @@ public static class FxFactory
         foreach (var ps in all)
         {
             if (ps == null) continue;
-            if (paused) ps.Pause(true);
-            else ps.Play(true);
+            if (paused)
+            {
+                // 只暂停正在播放的粒子；已 Stop（攻击结束的枪口等）的保持停止
+                if (ps.isPlaying) ps.Pause(true);
+            }
+            else
+            {
+                // 只恢复因暂停而暂停的粒子，避免把攻击完已 Stop 的枪口粒子重新点燃（防御塔暂停后假开火）
+                if (ps.isPaused) ps.Play(true);
+            }
         }
     }
 
