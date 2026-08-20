@@ -13,7 +13,7 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
     [Header("播放参数")]
     public float baseRoundDuration = 0.5f;   // 1x 速度下每回合秒数
 
-    const int DIZZY_FREEZE_ROUNDS = 4;       // 眩晕法宝冻结回合数（对齐 replay 数据观测：命中野兽连续不动+不攻击 ≈ 4 回合）
+    const int DIZZY_FREEZE_ROUNDS = 5;       // 眩晕法宝冻结回合数（特效持续时长）
 
     public ReplayData data;
     public StateEngine engine = new StateEngine();
@@ -74,7 +74,11 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
         RefreshResources();
     }
 
-    public void SetPlaying(bool p) { playing = p; }
+    public void SetPlaying(bool p)
+    {
+        playing = p;
+        FxFactory.SetGlobalPause(!p);
+    }
     public void TogglePlay() { SetPlaying(!playing); }
 
     public void SetSpeed(int idx)

@@ -194,6 +194,7 @@ public class TradeBadge : MonoBehaviour
 
     void Update()
     {
+        if (FxFactory.IsPaused()) return;
         _age += Time.deltaTime;
         float k = Mathf.Clamp01(_age / _duration);
 

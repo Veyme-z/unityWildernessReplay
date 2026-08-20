@@ -3,6 +3,27 @@ using UnityEngine;
 /// <summary>世界空间特效：伤害数字 / 攻击弹道 / 出生光环 / 说话气泡</summary>
 public static class FxFactory
 {
+    static ReplayPlayer _cachedPlayer;
+
+    /// <summary>当前是否处于暂停状态（供各特效组件在 Update 里冻结推进）。</summary>
+    public static bool IsPaused()
+    {
+        if (_cachedPlayer == null) _cachedPlayer = Object.FindObjectOfType<ReplayPlayer>();
+        return _cachedPlayer != null && !_cachedPlayer.playing;
+    }
+
+    /// <summary>暂停/恢复所有特效粒子系统（画面暂停时特效同步冻结）。</summary>
+    public static void SetGlobalPause(bool paused)
+    {
+        var all = Object.FindObjectsOfType<ParticleSystem>();
+        foreach (var ps in all)
+        {
+            if (ps == null) continue;
+            if (paused) ps.Pause(true);
+            else ps.Play(true);
+        }
+    }
+
     public static Font BuiltinFont()
     {
         return UiFonts.Get();
@@ -205,6 +226,7 @@ public class FloatFade : MonoBehaviour
     }
     void Update()
     {
+        if (FxFactory.IsPaused()) return;
         _t += Time.deltaTime;
         float k = Mathf.Clamp01(_t / duration);
         transform.position = _start + Vector3.up * (rise * k);
@@ -222,6 +244,7 @@ public class FadeLine : MonoBehaviour
     void Start() { _lr = GetComponent<LineRenderer>(); }
     void Update()
     {
+        if (FxFactory.IsPaused()) return;
         _t += Time.deltaTime;
         float k = 1f - Mathf.Clamp01(_t / duration);
         if (_lr != null) { _lr.startColor = new Color(1, 1, 1, k); _lr.endColor = new Color(1, 1, 1, k); }
@@ -243,6 +266,7 @@ public class RingFx : MonoBehaviour
     }
     void Update()
     {
+        if (FxFactory.IsPaused()) return;
         _t += Time.deltaTime;
         float k = Mathf.Clamp01(_t / duration);
         float s = Mathf.Lerp(0.3f, 1.3f, k);
@@ -267,6 +291,7 @@ public class FadeScale : MonoBehaviour
     void Start() { _base = transform.localScale; }
     void Update()
     {
+        if (FxFactory.IsPaused()) return;
         _t += Time.deltaTime;
         float k = Mathf.Clamp01(_t / duration);
         float s = Mathf.Lerp(scaleFrom, 1f, Mathf.Clamp01(k * 6f));
