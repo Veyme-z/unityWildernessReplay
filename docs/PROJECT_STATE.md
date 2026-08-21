@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-20
+> **最后更新**：2026-08-21
 
 ---
 
@@ -42,11 +42,22 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | `Scene/ReplayCameraRig.cs` | 相机系统：1/2/3/4 快捷机位 (Global/TeamA/TeamB/Free)；Free 模式左键平移+右键旋转+滚轮锚点缩放 |
 | `Scene/CameraManager.cs` | 自动导播：SmoothDamp + 事件特写 + 震屏 |
 | `FX/TradeBadge.cs` | 交易/使用徽标：World Space Billboard + 弹出淡出；Vendor/Shop 独立参数；角色使用道具 `ShowUse`（「使用 xx」）；背景框按全宽/半宽自适应 |
+| `FX/TaskCardBadge.cs` | **开拓者任务卡片**（Phase 1 无素材版）：程序化 Quad 底板 + TextMesh 文字，4 态 Intro(灰「接受任务」)/Working(蓝「破解中…」点循环)/Success(绿「✓ 通过」弹跳)/Fail(红「× 失败」抖动)，结果播 1.5s 淡出销毁；暂停冻结动画计时；Billboard 面向相机；共享 Sprites/Default 材质 + MPB 改色（GPU Instancing） |
+| `FX/TaskBadgeManager.cs` | 任务卡片全局管理器（挂在 ReplayEntry）：每帧从 `rounds[cur-1].teams[].task` 读快照、与 `rounds[cur-2]`（数据上一回合）做跳变检测判定状态（成功/失败）；拖动进度条/Seek 时**先全清再按目标回合数据重建**（杜绝「开拓者站着却残留失败框」）；血条上方 +0.5 净空、整体 2× 放大（世界坐标定位不受父节点缩放影响） |
 
 ### UI
 `HudController.cs` `EventLogPanelController.cs` `PlaybackControlPanelController.cs` `SettlementPanelController.cs` + `UnitDebugOverlay.cs`
 
 4 个面板均由场景 `PrefabRefs` 按 GUID 引用对应 prefab 驱动（`Create()` 缺 prefab 直接 `LogError`，**纯代码兜底 `CreateFromCode` 已全部删除**）。字体运行时统一替换为 `NotoSansSC`（CJK，**无 emoji 字形** → 项目 UI 全部用纯中文文本，不用 emoji）。`UnitDebugOverlay.cs` 是单位头顶调试悬浮文字（`[ID|Pos|HP|ATK]`），由 UnitView 挂载、受 `PlaybackControlPanelController.ShowUnitStats`（底部面板「显示」按钮）全局开关控制。
+
+### 音频（BGM，2026-08-21 新增）
+| 文件 | 职责 |
+|------|------|
+| `Audio/BgmController.cs` | **BGM 系统**：白天播 `bgm_day` / 夜晚播 `bgm_night`，双 AudioSource 按**回合**推进 CrossFade（正常 2 回合 / Seek 跳变 0.3 回合，速度无关）；夜晚阶段判定 `Mathf.Repeat(roundFloat,130) >= 75`（130 回合/周期，75~78 回合完成白天→夜晚过渡，夜晚音乐最迟第二天第 3 回合切回白天）；读取 `BgmAudioConfig` 起始偏移 + 选段循环；暂停 `AudioListener.pause` 冻结；音量档循环；WebGL 首次输入解锁 Autoplay；由 `ReplayEntry.Awake` 挂载 + `DontDestroyOnLoad` |
+| `Audio/BgmAudioConfig.cs` | 起始偏移配置 ScriptableObject（`dayStartTime`/`nightStartTime`，资产在 `Resources/Audio/BGM/BgmAudioConfig.asset`） |
+| `Audio/Editor/BgmAudioTool.cs` | 编辑器「BGM 选段工具」（菜单 Window → BGM 选段工具）：试听/拖进度条选段/设起始偏移/保存 |
+
+BGM 素材在 `Assets/Resources/Audio/BGM/`（`bgm_day`、`bgm_night`，`.ogg`/`.wav`/`.mp3` 均可，**运行时按文件名（不含扩展名）加载**）。替换与选段方法见第五节。
 
 ---
 
@@ -206,6 +217,15 @@ Create(state, parent)
 - `SceneBuilder` 用 `oz - y` 转换 Z（与 StateEngine 同向）
 - 单位位置 `transform.position = (state.pos.x, 0.01f, state.pos.z)`，Y 锁死贴地
 
+### BGM 系统（2026-08-21）
+- **挂载**：`ReplayEntry.Awake` 里 `gameObject.AddComponent<BgmController>()`，同 GO `DontDestroyOnLoad`；`BgmController` 零耦合（只读 `ReplayPlayer.playing/RoundFloat`）。
+- **双通道 CrossFade 按回合推进**：两个 `AudioSource`（loop，volume=0），切换时一个淡出一个淡入。**进度按 `|RoundFloat - 上一帧|` 推进、时长用「回合」而非秒**——秒数制在 1x/2x 下换算回合差 2 倍（3 秒在 1x≈6 回合 / 2x≈12 回合，夜晚曲拖到第二天）；回合制速度无关。正常 2 回合，Seek 跳变（>5 回合）0.3 回合瞬时切。
+- **昼夜判定**：`Mathf.Repeat(roundFloat, 130) >= 75`（130 回合/周期，配合 `StateEngine.DayOf/IsNight` 同周期）。75 起开始白天→夜晚过渡、78 回合完全铺满夜晚曲；夜晚→白天最迟第二天第 3 回合切回白天曲。
+- **起始偏移 + 选段循环**：读 `BgmAudioConfig`（编辑器工具写），`Play()` 前 `src.time = 偏移`；`Update` 里播到 `clip.length - 0.15` 就 `src.time = 偏移`（loop=true 兜底防断音）。偏移 0 = 整曲循环。
+- **音量档**：`VolumeLevel{ Mute=0 / Low=1 / High=2 }`，`TargetVolume` = 0 / 0.15 / 0.4；`CycleVolume()` 循环切换，UI 按钮每帧读 `CurrentVolumeLabel()`（静音/音量·低/音量·高）。
+- **暂停冻结**：`AudioListener.pause = !(player != null && player.playing)`；**淡出通道判定不能靠 `isPlaying`**（暂停时恒 false，见「已知大坑」）。
+- **WebGL Autoplay**：`#if UNITY_WEBGL && !UNITY_EDITOR` 下首次 `Input.anyKeyDown || Input.touchCount > 0` 才 `_audioUnlocked=true` 开始播放，未解锁前 Update 直接 return。
+
 ---
 
 ## 五、🔥 如何更换模型素材
@@ -263,6 +283,22 @@ Create(state, parent)
 - [ ] 野兽阴影已关闭（新 Robot 模型默认 Cast/Receive Shadows 开启，需在 Prefab 的 MeshRenderer/SkinnedMeshRenderer 关闭，或按 2026-08-19 资产根治方式统一处理）
 - [ ] 野兽无入场粒子（新 Robot 若带 playOnAwake 粒子需删除，避免登场闪现白圈）
 
+### 更换 BGM / 选取播放片段（2026-08-21 新增）
+
+**只改文件、不动代码：**
+
+1. **替换音乐**：直接把新音频文件丢进 `Assets/Resources/Audio/BGM/`，文件名必须保持 **`bgm_day`** 和 **`bgm_night`**（扩展名随意：`.ogg`/`.wav`/`.mp3`/`.aif`，运行时按名字加载）。推荐与原文件**同名同扩展**覆盖（`.meta`/GUID 保留，引用最稳）。替换后 Unity 自动重新导入，进 Play 模式立即生效。**WebGL 构建必须重新 Build**（Resources 是构建时打包，不热更新）。
+   - 素材缺失时不崩：`[BgmController] 加载失败...` 一条 Warning + 对应时段 BGM 静音，游戏照常跑。
+
+2. **选取播放片段（选段工具）**：菜单 **Window → BGM 选段工具**
+   - 下拉选曲 → `▶ 从偏移试听` / 拖**进度条**实时选段 → `🎯 当前位置设为起始` → `💾 保存配置`
+   - 保存到 `Assets/Resources/Audio/BGM/BgmAudioConfig.asset`（`dayStartTime`/`nightStartTime`，单位秒）
+   - 运行时：对应曲目从所选偏移开始播放，**播到所选片段结尾后回到偏移循环**（不绕回整曲开头；偏移 0 = 整曲循环）
+   - 工具按文件名找素材、不挑扩展名，换 `.mp3`/`.wav` 也能用
+   - 换曲后偏移按秒数自动 clamp 到新曲长度，建议换完重选一次
+
+**涉及文件**：BGM 素材在 `Assets/Resources/Audio/BGM/`，配置在 `BgmAudioConfig.asset`，无需改任何 `.cs` 代码。
+
 ---
 
 ## 六、常见修改指南
@@ -284,6 +320,10 @@ Create(state, parent)
 | 换塔模型素材 | 生成 ProjectAssets 源塔 + 重跑 `Tools/WildernessReplay/Build Tower Visual Prefabs`（见第五节） | 中 |
 | 换炸弹/眩晕特效 | `FxFactory.cs` 顶部 `RES_BOMB`/`RES_DIZZY` 路径（或直接替换 `Resources/FX/` 下 prefab）；调大小改 `BOMB_SCALE`/`DIZZY_SCALE` | 低 |
 | 改 WebGL replay 加载路径/换远程链接 | `ReplayEntry.cs` `Load()` 的 WebGL 分支：改 `RelativeStreamingUrl("replay.txt")` / `("demo_replay.jsonl")` 两处文件名；换远程完整链接需绕过 `RelativeStreamingUrl` 直接传完整 URL | 低 |
+| 换 BGM / 选播放片段 | 直接替换 `Resources/Audio/BGM/` 下 `bgm_day`/`bgm_night` 文件 + `Window → BGM 选段工具` 设起始偏移（见第五节） | 低 |
+| 调入夜/天亮节奏 | `BgmController.cs` `IsBgmNight()` 阈值（`>= 75`，130 回合周期；74→白天，75→开始入夜） | 低 |
+| 调 CrossFade 时长 | `BgmController.cs` `NORMAL_FADE_ROUNDS`（正常 2 回合）/ `SEEK_FADE_ROUNDS`（0.3） | 低 |
+| 调音量档 | `BgmController.cs` `TargetVolume()`：Mute=0 / Low=0.15 / High=0.4 | 低 |
 
 ---
 
@@ -309,15 +349,19 @@ Create(state, parent)
 | **StaticBatchingUtility.Combine 在本项目无效** | 2022.3 本工程实测：无论 mesh 是否 `isReadable`、物体是否 `isStatic`、单参/双参重载，调用后 root 都不产生合并网格（子物体照常独立渲染，console 无任何报错，静默 no-op）。场景合批必须用 `Mesh.CombineMeshes` 手动合批（见「性能优化」）。且 `CombineMeshes` 的 `useMatrices` 必须传 `true`（false 会忽略 `CombineInstance.transform`，全部顶点塌缩到局部原点堆在地图中心——验证网格 `bounds` 即可发现） |
 | **legacy TextMesh + Dynamic 字体在 WebGL 隐形** | 世界空间 `TextMesh`（3D 文本，非 uGUI `Text`）赋 Dynamic 字体（NotoSansSC）后在 WebGL 两个坑：① 不主动请求字形 → **中文空白**（需 `font.RequestCharactersInTexture(text, fontSize, style)`）；② 不自动把 `MeshRenderer.sharedMaterial` 同步成 `font.material` → **整个文本隐形，连数字/英文都不显示**（需 `mr.sharedMaterial = font.material`）。uGUI `Text` 无此问题（内部订阅 `textureRebuilt`）。见 `UiFonts.PrewarmWorldText()` / `TradeBadge.SetText` |
 | **WebGL "Insecure connection not allowed"** | HTTP 页面下 `UnityWebRequest.Get(绝对 http://URL)` 抛 `InvalidOperationException`。`ReplayEntry.RelativeStreamingUrl()` 把 `Application.streamingAssetsPath` 归一化为「相对当前网页」路径（剥掉协议+host，协议跟随页面），`LoadWebText()` 同步段包 try/catch 兜底走 demo，异常不中断初始化 |
+| **`AudioSource.isPlaying` 在 `AudioListener.pause` 时恒 false** | 回放暂停（`AudioListener.pause=true`）时任何 `AudioSource.isPlaying` 都返回 false。`BgmController` 判断「要淡出的旧通道」**不能靠 `isPlaying`**（否则暂停拖时间轴 seek 时旧曲不淡出，恢复播放双曲叠加），必须按 `clip` 归属判定、结束无条件 `Stop()`。换/调 BGM 逻辑时注意 |
 
 ---
 
 ## 八、近期改动
 
-> 📄 详细实现文档见 [夜间机器人卡顿优化_实现记录.md](夜间机器人卡顿优化_实现记录.md)（2026-08-20 夜间卡顿的完整改动方法、代码、关键坑）。
+> 📄 详细实现文档见 [夜间机器人卡顿优化_实现记录.md](夜间机器人卡顿优化_实现记录.md)（2026-08-20 夜间卡顿的完整改动方法、代码、关键坑）；任务卡片见 [任务卡片实现与升级方案.md](任务卡片实现与升级方案.md)（Phase 1 实现 + Phase 2 图片/视频替换方案 + 新旧 replay 数据对比结论）。
 
 | 日期 | 改动 |
 |------|------|
+| 2026-08-21 | **新增任务卡片实现文档 + 新版 replay 生效**：新增 [任务卡片实现与升级方案.md](任务卡片实现与升级方案.md)（Phase 1 实现细节、Phase 2 图片/视频替换方案、新旧 replay 数据对比结论）。新版 replay（1010 回合，怪物数值大幅加强）已替换为正式 `StreamingAssets/replay.txt` 并重新导入（Unity 已生成 .meta），旧版 906 回合备份为 `replay_906.txt`。**两版 75 个 JSON 键完全一致、零字段差异**，解析器/任务卡片逻辑无需任何改动 |
+| 2026-08-21 | **开拓者任务卡片定位/放大 + Seek 残留失败框修复**：新增 `FX/TaskCardBadge.cs`（4 态世界空间卡片）+ `FX/TaskBadgeManager.cs`（挂在 ReplayEntry），`ReplayEntry.Awake` 加一行 `AddComponent<TaskBadgeManager>()`。① 卡片从血条上方 `HpFill` 世界 Y + 0.5 净空定位（世界坐标计算，不受父节点缩放影响）+ 底板/文字整体 2× 放大；② **拖动进度条残留失败框 bug 根治**：管理器改为读 `rounds[cur-2]`（数据上一回合）而非上一帧快照做跳变检测，且暂停状态 `cur` 变化（`OnDrag` 先 `SetPlaying(false)` 再 `JumpTo`）时**先 ClearAllBadges 再按目标回合数据重建**——否则 Fail/Success 结果卡片在暂停时 1.5s 结束计时被冻结、永不淡出销毁，开拓者回到任务官前站着仍挂着失败框。实测：r23 任务段=2 Working，r50/r500 无任务站着=0 卡片，r33 真失败=team0 Fail+team1 Working，反复拖动序列末尾无残留。Parser/StateEngine/胜负判定/UI prefab 零改动 |
+| 2026-08-21 | **BGM 系统 + 选段工具**：新增 `Audio/BgmController.cs`（昼夜双曲 CrossFade、音量档、暂停冻结、WebGL Autoplay）、`Audio/BgmAudioConfig.cs`（起始偏移配置）、`Audio/Editor/BgmAudioTool.cs`（编辑器选段工具）；`ReplayEntry.Awake` 挂载 + `PlaybackControlPanelController` 加「音量」按钮。**昼夜节奏**：130 回合/周期，`Mathf.Repeat(roundFloat,130) >= 75` 入夜（75~78 回合完成白天→夜晚过渡），CrossFade **按回合推进**（正常 2 回合淡入淡出、Seek 跳变 0.3 回合瞬时切，速度无关），夜晚音乐最迟第二天第 3 回合切回白天。**选段**：音乐从配置偏移开始、播到所选片段结尾后回偏移循环。素材在 `Assets/Resources/Audio/BGM/`（按名字加载，扩展名随意）。替换/选段方法见第五节，调参见第六节。Parser/StateEngine/胜负判定零改动 |
 | 2026-08-20 | **UnitView.cs 拆分为 Partial Class（方案 C，0 回归）**：818 行上帝类按职责拆 5 文件——`UnitView.cs`(341 主文件：字段/Create/Configure*/LateUpdate/SetHp/SetStun) + `UnitView.Anim.cs`(172 动画装配/触发/倍速) / `UnitView.Hp.cs`(172 血条/光环) / `UnitView.Lod.cs`(119 距离LOD) / `UnitView.Tower.cs`(58 塔视觉)。纯物理搬运：类名/命名空间/GUID/字段与公开 API 签名零改动，13 个 Prefab（仅序列化 `strideCoefficient=1`）与 ReplayPlayer 等调用方零改动；`LateUpdate` 抽 `UpdateAnimationState()`+`UpdateLod()` 调度序列。编译 0 error/0 warning；Play 完整回放 906 回合 console 0 报错 |
 | 2026-08-20 | **事件日志过滤移动消息**：`ReplayPlayer.Log` 过滤「cmd + 含" 移动 "」日志（StateEngine.Diff 生成的 xx 移动 (x,y)→(x,y)）；`OnCommand` default 分支 `c.action=="move"` 不再刷日志（英文 move (x,y)）。仅显示层过滤，StateEngine/胜负判定零改动；建造/采集/贩卖/任务等事件保留。实测面板 move 类日志 0、建造等事件正常 |
 | 2026-08-20 | **远处静态机器人加轻微待机浮动 + 攻击/死亡瞬态动画**：实测"全部 156 只保持骨骼动画"会让 CPU 0.05ms→11.75ms、帧时→15ms（重新卡顿，LOD 必须保留）；在 `UnitView.LateUpdate` 给静态 LodMesh 加呼吸式上下浮动+缩放摆动（按 `state.id` 相位错开、暂停冻结，每只 2 次 Sin 可忽略）。另：`TriggerAttack`/`TriggerDeath` 时远处静态野兽临时恢复骨骼动画播放动作（冷却 2.5s+窗口 1s 限制并发，实测跳转后不加冷却会让 101/140 远处野兽全进动画 → CPU 回升）；`LateUpdate` 瞬态窗口内保持动画、窗口结束自动回静态。**全部参数已改为 public static 可运行时调**（`UnitView.LOD_RANGE / LodTransientCooldown / LodTransientWindow / LodIdleBobAmplitude / LodIdleSwayAmplitude`），详见实现记录「八、参数调优指南」 |

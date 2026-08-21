@@ -38,6 +38,7 @@ public class PlaybackControlPanelController : MonoBehaviour
     /// <summary>全局调试开关：单位头顶实时显示 ID/坐标/HP/攻击力（默认关闭，点击「显示」按钮取反）。</summary>
     public static bool ShowUnitStats = false;
     [SerializeField] Button _showStatsBtn;   // 「显示」调试切换按钮（prefab ControlBar 内，WireCallbacks 按名接线）
+    [SerializeField] Button _volumeBtn;      // 「音量」循环按钮（prefab 无则动态克隆 CamFree 同款，WireCallbacks 接线）
 
     static Font Fn()
     {
@@ -151,6 +152,35 @@ public class PlaybackControlPanelController : MonoBehaviour
             var showStatsBtn = btnBar.Find("Btn_ShowStats")?.GetComponent<Button>();
             if (showStatsBtn != null) { showStatsBtn.onClick.AddListener(() => ShowUnitStats = !ShowUnitStats); _showStatsBtn = showStatsBtn; }
 
+            // 「音量」循环按钮：prefab 没有 Btn_Volume 节点则动态克隆 CamFree 同款按钮 → 加到 ControlBar 末尾
+            var volBtn = btnBar.Find("Btn_Volume")?.GetComponent<Button>();
+            if (volBtn == null)
+            {
+                var camFreeGo = btnBar.Find("CamFree")?.gameObject;
+                if (camFreeGo != null)
+                {
+                    var volGo = Instantiate(camFreeGo, btnBar);
+                    volGo.name = "Btn_Volume";
+                    volBtn = volGo.GetComponent<Button>();
+                }
+            }
+            if (volBtn != null)
+            {
+                _volumeBtn = volBtn;
+                volBtn.onClick.AddListener(() =>
+                {
+                    BgmController.CycleVolume();
+                    RefreshVolumeLabel();
+                });
+                // 克隆发生在 UiFonts.Apply 之后，需手动补 NotoSansSC 字体 + 初始文字
+                var volText = volBtn.transform.Find("L")?.GetComponent<Text>();
+                if (volText != null) { volText.font = Fn(); volText.text = BgmController.CurrentVolumeLabel(); }
+                // ControlBar 680 宽装多按钮，新增音量按钮后可能溢出 → 动态加宽到 740
+                var barRT = btnBar.GetComponent<RectTransform>();
+                if (barRT != null && barRT.sizeDelta.x < 740f)
+                    barRT.sizeDelta = new Vector2(740f, barRT.sizeDelta.y);
+            }
+
             // 智能导播模式按钮
             var manBtn = btnBar.Find("Btn_ModeManual")?.GetComponent<Button>();
             if (manBtn != null) { manBtn.onClick.AddListener(() => CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Manual)); _btnManual = manBtn; }
@@ -186,6 +216,14 @@ public class PlaybackControlPanelController : MonoBehaviour
         if (parent == null) return null;
         var t = parent.Find(name);
         return t != null ? t.GetComponent<Text>() : null;
+    }
+
+    /// <summary>刷新音量按钮文字为当前档位（每帧轮询，不引入事件订阅）。</summary>
+    void RefreshVolumeLabel()
+    {
+        if (_volumeBtn == null) return;
+        var t = _volumeBtn.transform.Find("L")?.GetComponent<Text>();
+        if (t != null) t.text = BgmController.CurrentVolumeLabel();
     }
 
     void OnDrag(float v) {
@@ -280,6 +318,9 @@ public class PlaybackControlPanelController : MonoBehaviour
         // 「显示」调试开关高亮（开启=琥珀色，关闭=默认暗底）
         if (_showStatsBtn != null)
             _showStatsBtn.GetComponent<Image>().color = ShowUnitStats ? new Color(0.85f, 0.6f, 0.1f) : new Color(0.22f, 0.22f, 0.28f);
+
+        // 音量按钮文字每帧同步为当前档位
+        if (_volumeBtn != null) RefreshVolumeLabel();
     }
 
 }

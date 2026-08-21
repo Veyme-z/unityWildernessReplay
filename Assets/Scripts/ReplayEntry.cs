@@ -32,6 +32,12 @@ public class ReplayEntry : MonoBehaviour
             return;
         }
         _instance = this;
+
+        // BGM 系统（内部自处理 WebGL Autoplay 解锁 + 暂停冻结 + 昼夜 CrossFade）
+        gameObject.AddComponent<BgmController>();
+
+        // 任务卡片系统（每帧扫当前回合 teams[].task 判定状态，见 TaskBadgeManager）
+        gameObject.AddComponent<TaskBadgeManager>();
     }
 
     /// <summary>
