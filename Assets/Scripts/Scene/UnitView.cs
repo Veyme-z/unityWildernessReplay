@@ -16,6 +16,7 @@ public partial class UnitView : MonoBehaviour
     Transform _hpFill;
     Transform _selRing;
     float _hpY, _hpW, _hpThick = 0.05f;
+    float _hpDepth; // 血条深度（Z 方向），由 HP_BAR_STYLES 配置（UnitView.Hp.cs）
     MeshRenderer _hpFillRend;
     MaterialPropertyBlock _mpb;
     Animator _animator;
@@ -235,6 +236,7 @@ public partial class UnitView : MonoBehaviour
         EnsureRing();
         float targetW = state.type == 4 ? 2f : (state.type >= 6 && state.type <= 9) ? 1.5f : 1f;
         CalibrateBaseScale(targetW);
+        SetupNightAura(); // 夜晚角色光环（仅工人/开拓者，UnitView.Aura.cs）
         SetHp(state.hp, state.maxHp);
         StripPhysics(); // 二次剥离：防御塔视觉包装(Tower_*_Red/Blue)是此时才实例化的，内部自带碰撞体需一并销毁
 
@@ -307,9 +309,10 @@ public partial class UnitView : MonoBehaviour
                 _body.localRotation = Quaternion.identity;
         }
 
-        // ── 子模块：动画状态同步 + 野兽距离 LOD（实现在 UnitView.Anim.cs / UnitView.Lod.cs） ──
+        // ── 子模块：动画状态同步 + 野兽距离 LOD + 夜晚角色光环（实现在 UnitView.Anim.cs / UnitView.Lod.cs / UnitView.Aura.cs） ──
         UpdateAnimationState(isMovingNow, posChanged, moveDir);
         UpdateLod();
+        UpdateNightAura();
     }
 
     public void SetHp(int hp, int maxHp)
@@ -321,12 +324,10 @@ public partial class UnitView : MonoBehaviour
         if (_hpFill == null || _hpFillRend == null) return;
         float pct = Mathf.Clamp01((float)hp / Mathf.Max(1, maxHp));
         float fillW = _hpW;
-        _hpFill.localScale = new Vector3(fillW * pct, _hpThick, 0.02f);
+        _hpFill.localScale = new Vector3(fillW * pct, _hpThick, _hpDepth);
         _hpFill.localPosition = new Vector3(-fillW * 0.5f * (1f - pct), _hpY, 0);
-        Color c = pct > 0.6f ? new Color(0.267f, 0.925f, 0.435f)
-              : pct > 0.3f ? new Color(1f, 0.788f, 0.302f)
-              : new Color(1f, 0.231f, 0.188f);
-        _mpb.SetColor("_Color", c);
+        // 血条颜色按阵营/类型恒定：机器人黄 / 红方红 / 蓝方蓝 / 中立绿（不再随血量百分比变色）
+        _mpb.SetColor("_Color", GetHpColor());
         _hpFillRend.SetPropertyBlock(_mpb);
     }
 

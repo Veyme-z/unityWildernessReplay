@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
+using UnityEngine.Video;
 
 /// <summary>
 /// 任务卡片全局管理器：挂在 ReplayEntry 同一 GameObject（跟随其 DontDestroyOnLoad）。
@@ -34,12 +36,86 @@ public class TaskBadgeManager : MonoBehaviour
         public int roundCost;    // roundCost
     }
 
+    /// <summary>防多实例：同一帧若场景存在其它 TaskBadgeManager（编译/域重载后偶发叠加），
+    /// 多余实例自我销毁，避免各自维护字典、往同一开拓者 transform 下重复创建卡片导致叠卡。
+    /// 每帧扫一次：Destroy 延迟生效前可能短暂重复，因此每帧都让后出现的自毁。</summary>
+    // 共享任务视频：working 由全局共享播放器持续循环渲染进共享 RT——卡片 Working 态直接显示该 RT，
+    // 立即可用，不再等各自 Prepare（首次视频解码初始化 + 播放期渲染负载下 Prepare 需数秒，Intro/Working
+    // 阶段太短根本等不起）。success/fail 只全局预热就绪（结果态出现晚，届时各自开播，不抢 working 解码）。
+    static VideoPlayer s_sharedWorkingPlayer;
+    static RenderTexture s_sharedWorkingRT;
+
+    void Awake()
+    {
+        var all = FindObjectsOfType<TaskBadgeManager>();
+        for (int i = 0; i < all.Length; i++)
+            if (all[i] != this) { Destroy(this); return; }
+        EnsureSharedWorkingVideo();   // 共享 working 视频：游戏开始即准备 + 循环播放，吸收首次解码初始化
+        WarmUpResultVideos();         // success/fail 只后台 Prepare（就绪备用），不播放不抢解码
+    }
+
+    /// <summary>创建全局共享 working 视频（隐藏对象）：Prepare 完成即循环播放进共享 RT，
+    /// 随播放/暂停冻结（见 Update）。卡片 Working 态显示 GetSharedWorkingRT()，即开即用。</summary>
+    static void EnsureSharedWorkingVideo()
+    {
+        if (s_sharedWorkingPlayer != null) return;
+        var go = new GameObject("TaskWorkingSharedVideo");
+        go.hideFlags = HideFlags.HideAndDontSave;
+        var vp = go.AddComponent<VideoPlayer>();
+        vp.source = VideoSource.Url;
+        vp.url = Path.Combine(Application.streamingAssetsPath, "TaskVideos/working.mp4");
+        vp.isLooping = true;
+        vp.playOnAwake = false;
+        vp.renderMode = VideoRenderMode.RenderTexture;
+        vp.prepareCompleted += v =>
+        {
+            if (s_sharedWorkingRT == null)
+                s_sharedWorkingRT = new RenderTexture(Mathf.Max(2, (int)v.width), Mathf.Max(2, (int)v.height), 0);
+            v.targetTexture = s_sharedWorkingRT;
+            v.Play();
+        };
+        s_sharedWorkingPlayer = vp;
+        vp.Prepare();
+    }
+
+    /// <summary>success/fail 结果视频只后台 Prepare 就绪（隐藏对象），结果态出现时卡片各自开播/显示。
+    /// 先于 working 完成时的解码会话已由共享 working 预热，此处再预热结果视频的文件缓存。</summary>
+    static void WarmUpResultVideos()
+    {
+        var go = new GameObject("TaskResultVideoWarmUp");
+        go.hideFlags = HideFlags.HideAndDontSave;
+        WarmUpOne(go, "TaskVideos/success.mp4");
+        WarmUpOne(go, "TaskVideos/fail.mp4");
+    }
+
+    static void WarmUpOne(GameObject go, string file)
+    {
+        var vp = go.AddComponent<VideoPlayer>();
+        vp.source = VideoSource.Url;
+        vp.url = Path.Combine(Application.streamingAssetsPath, file);
+        vp.playOnAwake = false;
+        vp.Prepare();
+    }
+
+    /// <summary>共享 working 视频 RT（未就绪返回 null；卡片 Working 态用它做即时显示底）。</summary>
+    public static RenderTexture GetSharedWorkingRT() { return s_sharedWorkingRT; }
+
     void Update()
     {
         if (_player == null)
         {
             _player = FindObjectOfType<ReplayPlayer>();
             if (_player == null) return;
+        }
+
+        // 共享 working 视频随播放/暂停冻结（回放暂停时视频同步冻结，恢复续播）
+        if (s_sharedWorkingPlayer != null)
+        {
+            if (_player.playing)
+            {
+                if (!s_sharedWorkingPlayer.isPlaying) s_sharedWorkingPlayer.Play();
+            }
+            else if (s_sharedWorkingPlayer.isPlaying) s_sharedWorkingPlayer.Pause();
         }
 
         // Seek 检测：暂停状态下 cur 发生变化（拖动进度条 / 跳回合）→ 所有结果卡片（Success/Fail）
@@ -110,6 +186,14 @@ public class TaskBadgeManager : MonoBehaviour
             else
             {
                 if (target == TaskCardState.Hidden) continue;   // 隐藏态不创建卡片
+                // 硬保险：父节点下已有卡片（字典丢失/多 manager 偶发叠加）则复用而非新建，杜绝叠卡
+                var existing = us.view.transform.GetComponentInChildren<TaskCardBadge>(true);
+                if (existing != null)
+                {
+                    _activeBadges[roleId] = existing;
+                    existing.SetState(target, taskType);
+                    continue;
+                }
                 _activeBadges[roleId] = TaskCardBadge.Create(us.view.transform, target, taskType, _player);
             }
         }

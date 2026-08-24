@@ -2,12 +2,52 @@
 // 职责：3D 血条创建/更新/变色/共享材质、阵营光环、塔 HP 定位辅助
 // 字段声明与主流程见 UnitView.cs
 
+using System.Collections.Generic;
 using UnityEngine;
 
 public partial class UnitView
 {
     /// <summary>防御塔(3)血条顶部安全偏移：在 VisualHeight() 塔顶高度之上再抬高，确保清晰悬浮在炮塔正上方。</summary>
-    const float TOWER_HP_TOP_PADDING = 0.9f;
+    const float TOWER_HP_TOP_PADDING = 1.1f;
+
+    // ── 血条颜色（按阵营/类型恒定，不再随血量百分比变色）──
+    static readonly Color HP_COLOR_ROBOT      = new Color(1f, 0.788f, 0.302f);    // #FFC94D 机器人黄
+    static readonly Color HP_COLOR_DEFENDER   = new Color(1f, 0.176f, 0.333f);    // #FF2D55 红方
+    static readonly Color HP_COLOR_CHALLENGER = new Color(0f, 0.478f, 1f);        // #007AFF 蓝方
+    static readonly Color HP_COLOR_NEUTRAL    = new Color(0.267f, 0.925f, 0.435f); // #44EC6F 中立绿
+
+    /// <summary>血条颜色：野兽(11-14 机器人)统一黄色；defender 红色；challenger 蓝色；无阵营中立单位保持绿色。</summary>
+    Color GetHpColor()
+    {
+        if (state != null && state.IsBeast) return HP_COLOR_ROBOT;
+        if (state != null && state.teamType == "defender") return HP_COLOR_DEFENDER;
+        if (state != null && state.teamType == "challenger") return HP_COLOR_CHALLENGER;
+        return HP_COLOR_NEUTRAL;
+    }
+
+    // ── 血条外观配置（按单位类型），集中管理，避免分支散落魔法数字 ──
+    struct HpBarStyle
+    {
+        public float yOffset;   // Y = modelH + yOffset（相对模型顶部偏移）
+        public float yFactor;   // Y = modelH * yFactor（按模型高度比例；>0 时优先生效）
+        public float widthMul;  // 宽度倍率（基于 max(modelW, 0.3)）
+        public float thick;     // 厚度（Y 方向）
+        public float depth;     // 深度（Z 方向）；0 = 与厚度相同
+    }
+
+    static readonly Dictionary<int, HpBarStyle> HP_BAR_STYLES = new Dictionary<int, HpBarStyle>
+    {
+        { 3,  new HpBarStyle { yOffset = TOWER_HP_TOP_PADDING, widthMul = 1.28f, thick = 0.12f } },
+        { 4,  new HpBarStyle { yOffset = 2.2f,        widthMul = 1.6f,  thick = 0.10f } },
+        { 5,  new HpBarStyle { yFactor = 0.55f,       widthMul = 1f,    thick = 0.05f, depth = 0.025f } }, // 围墙：深度减半防过厚
+        { 7,  new HpBarStyle { yFactor = 0.65f,       widthMul = 1f,    thick = 0.05f } },
+        { 11, new HpBarStyle { yOffset = 0.4f,        widthMul = 1.3f,  thick = 0.10f } },
+        { 12, new HpBarStyle { yOffset = -0.2f,       widthMul = 1.3f,  thick = 0.10f } },
+        { 13, new HpBarStyle { yOffset = 1.8f,        widthMul = 2.5f,  thick = 0.10f } },
+        { 14, new HpBarStyle { yOffset = 1.8f,        widthMul = 2f,    thick = 0.10f } },
+    };
+
+    static readonly HpBarStyle HP_BAR_DEFAULT = new HpBarStyle { yFactor = 0.55f, widthMul = 1f, thick = 0.05f };
 
     static Material s_hpFillMat;
 
@@ -54,22 +94,20 @@ public partial class UnitView
             modelW = _body != null ? EstimateWidth(_body.gameObject) : 0.5f;
         }
         _hpW = Mathf.Max(modelW, 0.3f);
-        // 基地/塔在模型顶部，开拓者 0.65，其余 0.55
-        if (state.type == 4) { _hpY = modelH + 2f; _hpW *= 1.6f; }
-        else if (state.type == 3) { _hpY = modelH + TOWER_HP_TOP_PADDING; _hpW *= 1.28f; _hpThick = 0.06f; }
-        else if (state.type == 7) _hpY = modelH * 0.65f;
-        else if (state.type == 11) { _hpY = modelH + 0.4f; _hpW *= 1.3f; }
-        else if (state.type == 12) { _hpY = modelH - 0.2f; _hpW *= 1.3f; }
-        else if (state.type == 13) { _hpY = modelH + 1.8f; _hpW *= 2.5f; }
-        else if (state.type == 14) { _hpY = modelH + 1.8f; _hpW *= 2f; }
-        else _hpY = modelH * 0.55f;
+        // 高度/宽度/厚度/深度按单位类型查配置表（见 HP_BAR_STYLES），未配置的走默认
+        HpBarStyle st;
+        if (!HP_BAR_STYLES.TryGetValue(state.type, out st)) st = HP_BAR_DEFAULT;
+        _hpY = st.yFactor > 0f ? modelH * st.yFactor : modelH + st.yOffset;
+        _hpW *= st.widthMul;
+        _hpThick = st.thick;
+        _hpDepth = st.depth > 0f ? st.depth : st.thick;
         // 销毁旧黑底 HpBar
         var oldBar = transform.Find("HpBar");
         if (oldBar != null) Destroy(oldBar.gameObject);
         // 填充条
         if (_hpFill == null)
         {
-            _hpFill = CreateHpCube(transform, "HpFill", new Vector3(_hpW, _hpThick, 0.02f), new Color(0.267f, 0.925f, 0.435f), cubeMesh);
+            _hpFill = CreateHpCube(transform, "HpFill", new Vector3(_hpW, _hpThick, _hpDepth), new Color(0.267f, 0.925f, 0.435f), cubeMesh);
             _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
         }
         else
@@ -77,7 +115,7 @@ public partial class UnitView
             var bb = _hpFill.GetComponent<Billboard>();
             if (bb != null) Destroy(bb);
             _hpFill.GetComponent<MeshFilter>().sharedMesh = cubeMesh;
-            _hpFill.localScale = new Vector3(_hpW, _hpThick, 0.02f);
+            _hpFill.localScale = new Vector3(_hpW, _hpThick, _hpDepth);
             if (_hpFillRend == null) _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
             if (_hpFillRend != null && (_hpFillRend.sharedMaterial.name.Contains("Default") || _hpFillRend.sharedMaterial.shader.name != "Standard"))
                 _hpFillRend.sharedMaterial = GetSharedHpFillMat();

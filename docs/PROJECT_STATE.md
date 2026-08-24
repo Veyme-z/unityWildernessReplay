@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-21
+> **最后更新**：2026-08-24
 
 ---
 
@@ -29,7 +29,7 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | 文件 | 职责 |
 |------|------|
 | `Scene/SceneBuilder.cs` | **3D 地形搭建**：草地网格、森林边界、围墙、水面、NPC 站位。**性能：场景静态景物合批**（`StaticBatchAll` 用 `Mesh.CombineMeshes` 按材质分组合并草/树/围栏，2356 渲染器→14 合成网格）+ 材质共享（`GetFixedMaterial`/`GetStandardMat`/`_waterMat` 缓存） |
-| `Scene/UnitView.cs` + 4 partial（2026-08-20 拆分） | **单位表现核心**（Partial Class）：主文件 `UnitView.cs` 字段/Create/Configure*/LateUpdate 调度/SetHp/SetStun/CalibrateBaseScale；`UnitView.Anim.cs` 动画装配与触发（SetupRobotAnimator/UpdateAnimation/TriggerAttack/TriggerDeath/AnimatorSpeed 倍速）；`UnitView.Hp.cs` 血条与光环（UpgradeHpTo3D/EnsureRing/GetSharedHpFillMat/Estimate*）；`UnitView.Lod.cs` 野兽距离 LOD（UpdateLod/SetLodStatic/LOD_RANGE 等 public static 调参）；`UnitView.Tower.cs` 塔视觉（SetupTowerVisual/TriggerTowerAttack）。**性能优化**：SetHp/SetStun/UpdateAnimation 值缓存自门控（仅 HP/眩晕/生死变化时刷新材质、写旋转、设 Animator.speed），LateUpdate 空闲跳过插值，静态 ReplayPlayer 缓存；野兽阴影/入场粒子已在 Prefab 资产源头根治；**野兽距离 LOD**（远→共享烘焙静态网格+GPU 实例化+关 Animator，近→骨骼动画）；血条全局共享材质实例化 |
+| `Scene/UnitView.cs` + 5 partial（2026-08-20 拆 4 个 + 08-24 加 Aura） | **单位表现核心**（Partial Class）：主文件 `UnitView.cs` 字段/Create/Configure*/LateUpdate 调度/SetHp/SetStun/CalibrateBaseScale；`UnitView.Anim.cs` 动画装配与触发（SetupRobotAnimator/UpdateAnimation/TriggerAttack/TriggerDeath/AnimatorSpeed 倍速）；`UnitView.Hp.cs` 血条与光环（UpgradeHpTo3D/EnsureRing/GetSharedHpFillMat/Estimate* + `HP_BAR_STYLES` 配置表）；`UnitView.Lod.cs` 野兽距离 LOD（UpdateLod/SetLodStatic/LOD_RANGE 等 public static 调参）；`UnitView.Tower.cs` 塔视觉（SetupTowerVisual/TriggerTowerAttack）；`UnitView.Aura.cs` 夜晚角色光环（SetupNightAura/UpdateNightAura）。**性能优化**：SetHp/SetStun/UpdateAnimation 值缓存自门控（仅 HP/眩晕/生死变化时刷新材质、写旋转、设 Animator.speed），LateUpdate 空闲跳过插值，静态 ReplayPlayer 缓存；野兽阴影/入场粒子已在 Prefab 资产源头根治；**野兽距离 LOD**（远→共享烘焙静态网格+GPU 实例化+关 Animator，近→骨骼动画）；血条全局共享材质实例化 |
 | `Scene/UnitViewSprite.cs` | **静态工具**：Sprite 扫描、颜色计算（从 UnitView 拆出） |
 | `Scene/ResourceViewManager.cs` | **矿石系统**：3D 球体 + 物理 .mat 材质 |
 | `Scene/TeamColorApplicator.cs` | **阵营标识**：仅控制脚底 SelRing 颜色（已废除全身染色） |
@@ -42,8 +42,8 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | `Scene/ReplayCameraRig.cs` | 相机系统：1/2/3/4 快捷机位 (Global/TeamA/TeamB/Free)；Free 模式左键平移+右键旋转+滚轮锚点缩放 |
 | `Scene/CameraManager.cs` | 自动导播：SmoothDamp + 事件特写 + 震屏 |
 | `FX/TradeBadge.cs` | 交易/使用徽标：World Space Billboard + 弹出淡出；Vendor/Shop 独立参数；角色使用道具 `ShowUse`（「使用 xx」）；背景框按全宽/半宽自适应 |
-| `FX/TaskCardBadge.cs` | **开拓者任务卡片**（Phase 1 无素材版）：程序化 Quad 底板 + TextMesh 文字，4 态 Intro(灰「接受任务」)/Working(蓝「破解中…」点循环)/Success(绿「✓ 通过」弹跳)/Fail(红「× 失败」抖动)，结果播 1.5s 淡出销毁；暂停冻结动画计时；Billboard 面向相机；共享 Sprites/Default 材质 + MPB 改色（GPU Instancing） |
-| `FX/TaskBadgeManager.cs` | 任务卡片全局管理器（挂在 ReplayEntry）：每帧从 `rounds[cur-1].teams[].task` 读快照、与 `rounds[cur-2]`（数据上一回合）做跳变检测判定状态（成功/失败）；拖动进度条/Seek 时**先全清再按目标回合数据重建**（杜绝「开拓者站着却残留失败框」）；血条上方 +0.5 净空、整体 2× 放大（世界坐标定位不受父节点缩放影响） |
+| `FX/TaskCardBadge.cs` | **开拓者任务卡片**：程序化 Quad 底板 + TextMesh 文字，4 态 Intro/Working/Success/Fail，结果视频播完淡出销毁；暂停冻结动画计时 + 视频同步；Billboard 面向相机；共享 Sprites/Default 材质 + MPB 改色（GPU Instancing）；**渲染层**：Intro=task.png 图片（MPB `_MainTex`、`_Color` 白不 tint、不叠文字、至少 2 回合）；Working=**VideoPlayer+RenderTexture 循环播放 working.mp4**；Success/Fail=**success.mp4/fail.mp4 视频**（三路独立 `VideoSlot`（VideoPlayer+RenderTexture）按 url 缓存，Intro 起 `StartVideoPreload` 全部 `Prepare()` + working 预卷蓄帧；**无中间态核心**：目标视频未就绪时保持当前画面（Intro 图/working 视频）不动、渲染出帧瞬间无缝接管，绝不蓝/白/空加载底；`_resultDuration=max(1.5s,视频时长+0.1)` 看完一遍淡出销毁；视频失败降级纯色+文字）（StreamingAssets 下，WebGL 相对 URL；暂停全部 Pause、恢复续播；`_mpb.Clear()` 清纹理 + 立即补回 `_Color` 防暂停全透明）；**金黄描边**（BORDER=0.05 稍大 Quad 垫底） |
+| `FX/TaskBadgeManager.cs` | 任务卡片全局管理器（挂在 ReplayEntry）：每帧从 `rounds[cur-1].teams[].task` 读快照、与 `rounds[cur-2]`（数据上一回合）做跳变检测判定状态（成功/失败）；拖动进度条/Seek 时**先全清再按目标回合数据重建**（杜绝「开拓者站着却残留失败框」）；血条上方 +0.5 净空、整体 2× 放大（世界坐标定位不受父节点缩放影响）；Awake 多实例自毁 + 创建前查父节点已有卡复用（防叠卡） |
 
 ### UI
 `HudController.cs` `EventLogPanelController.cs` `PlaybackControlPanelController.cs` `SettlementPanelController.cs` + `UnitDebugOverlay.cs`
@@ -77,13 +77,14 @@ Resources/Prefabs/Units/
 Resources/Prefabs/Beasts/
 ├── Beast_11.prefab  # Bot Robot (小型)
 ├── Beast_12.prefab  # Boxy Robot (中型)
-├── Beast_13.prefab  # Tanker Robot (大型)
-├── Beast_14.prefab  # Metal Robot (BOSS)
+├── Beast_13.prefab  # Gripper Robot (大型；原 Tanker 形象移至 Beast_14 作 Boss)
+├── Beast_14.prefab  # Tanker Robot (BOSS，原第三种形象；原 Metal Robot BOSS 已淘汰)
 ```
 层级：Beast_XX → Visual → RobotAdjust (scale/Y/yaw) → Robot (Nested Prefab)
 原 Skeleton 节点保留但 disable。动画通过 `AnimatorOverrideController` 将 Skeleton_AnimatorController 参数映射到 Robot clips。
 
-**资产源头已根治（2026-08-19）**：4 个 Beast prefab + 4 个底层 Robot prefab（Bot/Boxy/Tanker/Metal）的全部 Renderer 均 `shadowCastingMode=Off` + `receiveShadows=false`（`m_CastShadows`/`m_ReceiveShadows=0`）；Beast_11 底层 `Bot Robot.prefab` 的入场粒子 `FX Hex`（playOnAwake 白圈）已彻底删除（Boxy/Tanker/Metal 本就无粒子）。运行时无任何阴影/粒子补救代码。
+**资产源头已根治（2026-08-19，2026-08-24 Gripper 补充）**：5 个底层 Robot prefab（Bot/Boxy/Tanker/Metal/Gripper）的全部 Renderer 均 `shadowCastingMode=Off` + `receiveShadows=false`（`m_CastShadows`/`m_ReceiveShadows=0`）；Beast_11 底层 `Bot Robot.prefab` 的入场粒子 `FX Hex`（playOnAwake 白圈）已彻底删除（Boxy/Tanker/Metal/Gripper 本就无粒子）。运行时无任何阴影/粒子补救代码。
+**2026-08-24 形象调整**：Beast_13 改用 `Gripper Robot.prefab`；Beast_14（Boss）改用原第三种 `Tanker Robot.prefab`；原 Boss `Metal Robot.prefab` 不再被引用（源文件保留）。Boss(type 14) 豁免距离 LOD 静态化（`UnitView.Lod.cs` `UpdateLod()`），动画始终独立播放。
 
 ### 建筑
 ```
@@ -179,8 +180,8 @@ Create(state, parent)
 ### 血条系统 (UnitView)
 - **3D Cube**：`Resources.GetBuiltinResource<Mesh>("Cube.fbx")`，Standard shader
 - **无底槽**：HpBar 已删除，只剩 HpFill
-- **自适应大小**：`_hpW` = 模型宽度，Base/Tower ×1.6，高度按类型分档
-- **三色变色**：MaterialPropertyBlock `_Color`：#44EC6F(>60%) / #FFC94D(30-60%) / #FF3B30(<30%)
+- **自适应大小（配置表驱动）**：`_hpW` = 模型宽度；高度/宽度倍率/厚度/深度统一查 `HP_BAR_STYLES` 配置表（UnitView.Hp.cs，按 type 一行，未配置走 `HP_BAR_DEFAULT`）。血条为长方体：长度 X=hp 百分比、厚度 Y=thick、深度 Z=depth（默认 depth=thick；围墙 type5 深度减半 0.025 防过厚）
+- **阵营恒定颜色**（不再随血量百分比变色）：MaterialPropertyBlock `_Color` 按阵营/类型恒定——野兽(11-14 机器人)黄 `#FFC94D` / 红方(defender)红 `#FF2D55` / 蓝方(challenger)蓝 `#007AFF` / 中立单位(NPC/无阵营)绿 `#44EC6F`；常量与 `GetHpColor()` 在 `UnitView.Hp.cs`
 - **自动补建**：UpgradeHpTo3D() 若 Prefab 无 HpFill 则创建，若 Default-Material 则替换为 Standard
 
 ### 性能优化（2026-08-19，WebGL 大量单位同屏）
@@ -199,6 +200,7 @@ Create(state, parent)
 
 ### 阵营区分
 - **TeamColorApplicator**：已废除全身 MPB 染色，不再修改角色贴图颜色
+- **夜晚角色光环（2026-08-24）**：工人/开拓者(6/7) 夜晚常驻 `CFXR3 Magic Aura A (Runic)` 魔法符文光环（`Resources/FX/CFXR3 Magic Aura A (Runic).prefab`，项目原有拷贝，自带暖色 Point Light），MPB `_Color` 按阵营上色（红方红 `3,0.6,0.6` / 蓝方蓝 `0.6,0.8,3.2`，alpha 0.55 通透）；特效以脚底/地面为中心（`NIGHT_AURA_FOOT_Y=0`，符文圈贴地）；`Mathf.Repeat(RoundFloat,130)>=80` 判定夜晚、随昼夜显隐、暂停冻结。**两个关键修复**：① CFXR 灯光动画在 `CFXR_Effect.Update` 用 Time.deltaTime 推进、粒子暂停不冻结 → `FxFactory.SetGlobalPause` 里 `CFXR_Effect.GlobalDisableLights=paused`（暂停时灯保持当前强度冻结不闪）；② Seek 到夜晚立即暂停时粒子为 0 法阵隐形 → `SetAuraVisible` 显示时 `ps.Simulate(1s)` 预热成型，并设 `clearBehavior=None` 防 CFXR 误销毁。实现 `UnitView.Aura.cs`，参数（原生尺寸/比例/透明度/颜色）集中在文件顶部常量。曾用 Hovl Buff 光环（已弃用，Resources 副本已删；原始 `Hovl Studio/.../Buff.prefab` 仍在——勿 revert 旧序列化格式否则导入报「referenced script missing」误报，保留 Unity 重序列化新版即可）
 - **建筑**：defender→Model_Red 激活，challenger→Model_Blue 激活（红蓝反了：defender 显红）
 - **基地 pivot 偏移**：defender Z=-1.0, challenger Z=-1.92
 
@@ -305,13 +307,14 @@ Create(state, parent)
 
 | 想做什么 | 文件 | 复杂度 |
 |---------|------|:---:|
-| 调血条高度/宽度 | `UnitView.Hp.cs` UpgradeHpTo3D() 中的 `_hpY`/`_hpW` 计算（野兽按 type 11-14 独立配置） | 低 |
+| 调血条高度/宽度/厚度/深度 | `UnitView.Hp.cs` 顶部 `HP_BAR_STYLES` 配置表（按 type 一行：`yOffset`/`yFactor`、`widthMul`、`thick`、`depth`） | 低 |
 | 调野兽模型大小/高度 | Beast Prefab 中 `Visual/RobotAdjust` 的 localScale / localPosition.y / localRotation.y | 低 |
 | 换野兽 Robot | Beast Prefab 中删除旧 Robot 子节点 → 拖入新 Robot Prefab 到 RobotAdjust 下 | 低 |
 | 调树大小/概率 | `SceneBuilder.cs` BuildForestSkirt() 中的 treeProb/scale | 低 |
 | 调矿石大小 | `ResourceViewManager.cs` GetOrCreate() 中的 scale | 低 |
 | 加新单位类型 | `UnitView.UNIT_PREFABS` + Prefab | 中 |
-| 改血条颜色 | `UnitView.cs` SetHp() 中的 Color 值 | 低 |
+| 改血条颜色 | `UnitView.Hp.cs` 顶部 `HP_COLOR_ROBOT/DEFENDER/CHALLENGER/NEUTRAL` 常量或 `GetHpColor()` | 低 |
+| 调夜晚角色光环（大小/透明度/颜色/位置） | `UnitView.Aura.cs` 顶部常量：`NIGHT_AURA_RATIO`（比例，调大更大）/`NIGHT_AURA_ALPHA`（透明度，<1 更淡）/`NIGHT_AURA_FOOT_Y`（垂直偏移，调大上移）+ `NIGHT_AURA_DEFENDER/CHALLENGER`（阵营色）；换特效 prefab 改 `NIGHT_AURA_RES` 并实测更新 `NIGHT_AURA_NATIVE`/`FOOT_Y` | 低 |
 | 改围栏样式 | `SceneBuilder.cs` BuildPerimeterFence() 中的 fenceFbx 路径 | 低 |
 | 调塔尺寸/朝向/后坐力/时间参数 | 打开 `CubeTowers/Tower_Minigun_{Faction}.prefab` 的 `TowerVisualController` Inspector 字段 | 低 |
 | 调炮塔俯仰幅度 | 同上 Inspector 的 `pitchLimit`（默认 70°，攻击时头部上下跟随目标高度） | 低 |
@@ -359,6 +362,14 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-08-24 | **任务卡片 Success/Fail 视频替换（多 slot 无中间态）**：新增 `Assets/StreamingAssets/TaskVideos/success.mp4`（1280×720 约3.4s）/`fail.mp4`（960×540 约2.4s）；`FX/TaskCardBadge.cs` 渲染层重构为**多 VideoPlayer slot**——`_videos` 字典按 url 缓存 working/success/fail 三路独立 VideoPlayer+RenderTexture（`VideoSlot`：url/player/rt/prepared/failed），`EnsureVideo()`+`StartVideoPreload()`（**Intro 接任务即对全部视频 `Prepare()`**，working 预卷蓄帧、结果视频就绪备用）+`BeginResultVideo(url)`（**结果态：就绪→`PlayVideo` 不可见开播；未就绪→保持当前画面（working 视频/Intro 图）不动**）+`Update` 驱动（目标视频渲染出帧 `frame>=1` 瞬间换底板 `_MainTex`；已显示保证播放、其余 slot 停播）——四个状态切换**均无中间态，绝不蓝/白/空加载底**。结果视频 `isLooping=true` 循环，`_resultDuration=max(1.5s, 视频时长+0.1)` 播完一遍淡出销毁；`OnVideoError` 按状态降级纯色+文字（Working 蓝"破解中"/Success 绿"✓ 通过"/Fail 红"× 失败"）。实测：隔离卡 Success/Fail 均 shown=对应视频、MainTex=RT、视频 playing、RT 中心非黑、working 停播、按视频时长淡出；切换首帧保持上一画面无空档；**真实 replay r33 失败段**：暂停直跳→Intro 图兜底无白底，慢速播放→真实 Fail 卡 `shown=TaskVideos/fail.mp4`、fail 视频 playing（frame=26）、RT 中心非黑（0.33,0.17,0.23）、`fallback=False`；console 0 error |
+| 2026-08-24 | **任务卡片 Intro→Working 无中间态切换（预载视频 + 未就绪保持图片）**：`FX/TaskCardBadge.cs` 重构——新增 `EnsureVideoPlayer()`（创建/配置一次）＋`StartVideoPreload()`（**Intro 接任务即后台 `Prepare()` 预载视频**，不显示不播放；`OnVideoPrepared` 里静默预卷开播进 RT，为 Working 蓄帧）＋`BeginWorkingVideo()`（**Working：已就绪→直接上视频；未就绪→保持 Intro 图片**，`OnVideoPrepared` 就绪瞬间无缝接管）＋Intro 用 `_vp.Stop()` 取代旧 `StopVideo()`（保留已就绪资源复用）。去掉旧"纯蓝/纯白等待态"——`_stateColor` 在 Intro/Working 全程保持白（图片/视频都是 tex×白），切换只是换 `_MainTex` 引用，**无任何颜色中间态**。`TryPlayVideo` 加 `_videoPrepared` 守卫，未就绪不空转。实测：r12 Intro=tex2d 图片+白+视频已预载（暂停跟随冻结）；Working=r14 直接 tex=RT+白+playing；隔离卡强制 Working 未就绪瞬间=图片+白（非蓝非白底）、下一帧就绪=RT+白+playing 循环中；循环跨 4.0s 回绕；console 0 error |
+| 2026-08-24 | **任务卡片 Intro 图片替换 + 防叠卡加固**：新增 `Assets/Resources/Sprites/task.png`（「接受任务」Intro 底板图，1024×1024，Resources.Load 打包进 Build）；`FX/TaskCardBadge.cs` 加 `IntroTex()`/`SetMainTexture()`——Intro 状态底板 MPB `_MainTex`=task 图片、`_Color`=白（不 tint），其余状态 `_MainTex`=null 恢复纯色。`FX/TaskBadgeManager.cs` 加两道防线：① `Awake` 多实例自毁（防编译/域重载后多 manager 各建卡叠卡）；② 创建前查父节点已有 `TaskCardBadge` 则复用而非新建。实测：r12 Intro 卡 MPB_TEX=task 1024×1024 + 文字保留，r30 Working 双卡 MPB_TEX=null 恢复纯色，编译后立即 play 播放至 r165 dict/sceneCards 恒 2，编译 0 error。视频阶段规范见 [任务卡片实现与升级方案.md](任务卡片实现与升级方案.md) |
+| 2026-08-24 | **任务卡片修复（Working 残留图片 + 金黄描边）**：`SetMainTexture(null)` 原用 `_mpb.SetTexture("_MainTex", null)`，MaterialPropertyBlock.SetTexture **不接受 null → 抛 ArgumentNullException**（console 刷屏，异常中断导致 `_MainTex` 从未清除 → Working/Success/Fail 底板残留 Intro 的 task.png）。改为 `_mpb.Clear()` 清空全部属性再按需 `SetTexture`。另：卡片加**金黄描边**（`BORDER=0.05`，Awake 建稍大 Border Quad 垫在 Bg 后，MPB `_Color`=0xFFD700，卡片在草地/图片上轮廓清晰）。实测：Working/Success/Fail Bg 均 hasTex=False 纯色（task.png 已清除）、Intro hasTex=True task 图片 + 金黄 Border，console 0 error |
+| 2026-08-24 | **任务卡片 Intro 优化（展示 2 回合 + 去掉叠字）**：① **至少展示 2 回合**——数据上 `roundCost==0` 仅接任务那 1 回合，Intro 图片一闪而过；`TaskCardBadge` 增加 `_introStartCur`/`INTRO_MIN_ROUNDS(2)`：`SwitchTo(Intro)` 记录起始回合，`SetState` 里当前 Intro 且数据已切 Working 但 `player.cur - _introStartCur < 2` 则延迟切换继续展示图片（结果态 Success/Fail 不受延迟、Seek 即时生效）；② **Intro 不叠文字**——task.png 自带「接受任务」字样，`ApplyStateVisuals` 里 Intro 状态 `_txtGo.SetActive(false)` 隐藏文字。实测（真实任务段 r12-r14）：r12 Intro+文字隐藏、r13 数据已切 Working 仍 Intro（延迟生效）、r14 满 2 回合切 Working+文字"破解中"，console 0 error |
+| 2026-08-24 | **任务卡片 Working 视频替换 + 3 处渲染 bug 修复**：新增 `Assets/StreamingAssets/TaskVideos/working.mp4`（用户素材约 1MB）；`FX/TaskCardBadge.cs` 实现 `StartWorkingVideo()`/`OnVideoPrepared`/`OnVideoError`/`StopVideo()`/`TryPlayVideo()`/`WorkingVideoUrl()`——Working 状态底板 `_MainTex`=**VideoPlayer+RenderTexture 循环播放 working.mp4**（文字隐藏，视频自带字样）；WebGL 用相对 StreamingAssets URL（剥 `http(s)://host` 防协议混用）；暂停 Pause/恢复 Play/销毁释放；加载失败降级纯色蓝+"破解中"。**3 处修复**：① `SetMainTexture` 的 `_mpb.Clear()` 会清掉 `_Color`，而 `OnVideoPrepared` 异步回调时已暂停（`Update` 提前 return 不再跑 `ApplyAlpha`）→ 视频底图全透明不可见；改为 Clear 后立即补回 `_Color`（`_stateColor`，视频态=白）。② `showText` 从 switch 前移到 switch 后判定——原在 Working 视频模式下 `_videoWorking` 还是 false，文字对象被误激活。③ `StartWorkingVideo` 先 `SetMainTexture(null)` 清旧贴图再等视频就绪，杜绝 Intro 图/视频并存过渡帧。实测：r14 Working `_MainTex`=RT+`_Color`=白+Txt 隐藏+视频 playing 两卡独立时间轴（time 0.40/1.03）且 RT 中心像素非黑（0.20,0.33,0.45）视频真实渲染；暂停冻结视频且底图可见；r12 Intro 图+金黄描边+无视频；r33 team0 Fail 纯色红+"× 失败"+视频已停；console 0 error（仅 1 条 Editor 专属 WMF 色域告警） |
+| 2026-08-24 | **任务卡片白色闪帧修复 + 视频循环保障**：① **白色空白**（Intro 图→Working 视频之间）——`_stateColor` 原在 `ApplyStateVisuals(Working)` 提前转白（为视频 tint），但视频未挂上 `_MainTex`（null）×白=纯白 Quad，视频准备期间闪白。修复：`_stateColor` **保持蓝直到视频就绪**——`OnVideoPrepared` 里才转白+`SetMainTexture(_vpRT)`；`OnVideoError` 降级先转蓝再清纹理。② **视频循环**（working.mp4 4s，Working 阶段跨多回合）——三重保障：`isLooping=true` + `loopPointReached` 事件 `OnVideoLoop` 兜底（`_vp.time=0`+Play）+ `TryPlayVideo` 未播放且未暂停时 `_vp.time=0` 后 `Play()` 每帧兜底重启，**显示时长跟回合走**。实测：真实回放 r14 两张卡一张准备中=纯蓝（非白）一张就绪=RT+白；隔离卡视频 time 1.53→3.17→0.77（跨 4.0s 回绕）→3.17 全程 playing → 循环生效；暂停冻结、恢复不断档；console 0 error |
+| 2026-08-24 | **夜晚角色光环**：夜晚角色与机器人难区分 → 工人/开拓者(6/7) 夜晚常驻光环（最终用 `CFXR3 Magic Aura A (Runic)`，MPB 按阵营上色、特效贴地、自带 Point Light；曾试 Hovl Buff + 自加 AuraLight 灯效，已弃用/移除）；`Mathf.Repeat(RoundFloat,130)>=80` 判定夜晚、随昼夜显隐、暂停冻结；**修复暂停闪烁**（`FxFactory.SetGlobalPause` 加 `CFXR_Effect.GlobalDisableLights=paused`，CFXR 灯光动画随暂停冻结）+ **修复 Seek 到夜晚法阵隐形**（`SetAuraVisible` 显示时 `ps.Simulate(1s)` 预热成型 + `clearBehavior=None`）；新增 `UnitView.Aura.cs` partial（`SetupNightAura`/`UpdateNightAura`）接入 `ConfigureFromUnitPrefab`/`LateUpdate`。实测：6 角色全部挂载、白天隐藏/夜晚播放/暂停冻结、暂停灯强度稳定、Seek 后符文圈可见、阵营色正确。另：血条 Y/Z 解耦 + 外观参数收敛为 `HP_BAR_STYLES` 配置表（围墙深度减半 0.025、防御塔/基地血条抬高 +0.2） |
 | 2026-08-21 | **新增任务卡片实现文档 + 新版 replay 生效**：新增 [任务卡片实现与升级方案.md](任务卡片实现与升级方案.md)（Phase 1 实现细节、Phase 2 图片/视频替换方案、新旧 replay 数据对比结论）。新版 replay（1010 回合，怪物数值大幅加强）已替换为正式 `StreamingAssets/replay.txt` 并重新导入（Unity 已生成 .meta），旧版 906 回合备份为 `replay_906.txt`。**两版 75 个 JSON 键完全一致、零字段差异**，解析器/任务卡片逻辑无需任何改动 |
 | 2026-08-21 | **开拓者任务卡片定位/放大 + Seek 残留失败框修复**：新增 `FX/TaskCardBadge.cs`（4 态世界空间卡片）+ `FX/TaskBadgeManager.cs`（挂在 ReplayEntry），`ReplayEntry.Awake` 加一行 `AddComponent<TaskBadgeManager>()`。① 卡片从血条上方 `HpFill` 世界 Y + 0.5 净空定位（世界坐标计算，不受父节点缩放影响）+ 底板/文字整体 2× 放大；② **拖动进度条残留失败框 bug 根治**：管理器改为读 `rounds[cur-2]`（数据上一回合）而非上一帧快照做跳变检测，且暂停状态 `cur` 变化（`OnDrag` 先 `SetPlaying(false)` 再 `JumpTo`）时**先 ClearAllBadges 再按目标回合数据重建**——否则 Fail/Success 结果卡片在暂停时 1.5s 结束计时被冻结、永不淡出销毁，开拓者回到任务官前站着仍挂着失败框。实测：r23 任务段=2 Working，r50/r500 无任务站着=0 卡片，r33 真失败=team0 Fail+team1 Working，反复拖动序列末尾无残留。Parser/StateEngine/胜负判定/UI prefab 零改动 |
 | 2026-08-21 | **BGM 系统 + 选段工具**：新增 `Audio/BgmController.cs`（昼夜双曲 CrossFade、音量档、暂停冻结、WebGL Autoplay）、`Audio/BgmAudioConfig.cs`（起始偏移配置）、`Audio/Editor/BgmAudioTool.cs`（编辑器选段工具）；`ReplayEntry.Awake` 挂载 + `PlaybackControlPanelController` 加「音量」按钮。**昼夜节奏**：130 回合/周期，`Mathf.Repeat(roundFloat,130) >= 75` 入夜（75~78 回合完成白天→夜晚过渡），CrossFade **按回合推进**（正常 2 回合淡入淡出、Seek 跳变 0.3 回合瞬时切，速度无关），夜晚音乐最迟第二天第 3 回合切回白天。**选段**：音乐从配置偏移开始、播到所选片段结尾后回偏移循环。素材在 `Assets/Resources/Audio/BGM/`（按名字加载，扩展名随意）。替换/选段方法见第五节，调参见第六节。Parser/StateEngine/胜负判定零改动 |

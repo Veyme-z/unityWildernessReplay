@@ -23,6 +23,10 @@ public partial class UnitView
     /// <summary>每帧野兽距离 LOD 切换（LateUpdate 子模块：判定距离 + 切换静态/动画 + 待机浮动）。</summary>
     void UpdateLod()
     {
+        // BOSS(14) 数量稀少（全局仅 ~120 条 spawn、同时在场个位数），豁免距离 LOD：
+        // 动画始终独立播放（不被静态化冻结、不受瞬态冷却限制），多几副骨骼的开销可忽略。
+        if (state != null && state.type == 14) return;
+
         if (_skinned != null && _animator != null)
         {
             if (s_camera == null) s_camera = Camera.main;

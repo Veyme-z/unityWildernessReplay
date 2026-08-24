@@ -15,6 +15,9 @@ public static class FxFactory
     /// <summary>暂停/恢复所有特效粒子系统（画面暂停时特效同步冻结）。</summary>
     public static void SetGlobalPause(bool paused)
     {
+        // CFXR 特效的灯光动画在 CFXR_Effect.Update 里用 Time.deltaTime 推进，粒子暂停不冻结它——
+        // 暂停时全局禁用 CFXR 灯光动画（光保持当前强度冻结，不会一闪一闪）
+        CartoonFX.CFXR_Effect.GlobalDisableLights = paused;
         var all = Object.FindObjectsOfType<ParticleSystem>();
         foreach (var ps in all)
         {
