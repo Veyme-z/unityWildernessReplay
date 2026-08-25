@@ -577,7 +577,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 4013941236930522135}
+  - {fileID: 8453755995761901881}
   m_Father: {fileID: 8205289106578807635}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2726906171112251393
@@ -2203,7 +2203,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.35, y: 0.35, z: 0.35}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 283115186578504828}
@@ -2259,7 +2259,7 @@ Transform:
   - {fileID: 5548177959495207434}
   m_Father: {fileID: 4419158104572629864}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1001 &3479146508126374895
+--- !u!1001 &6474375558813660739
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -2267,57 +2267,57 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8143860927292357659}
     m_Modifications:
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 2865288414512082368, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
+      propertyPath: m_Name
+      value: Gripper Robot
+      objectReference: {fileID: 0}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalPosition.y
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalPosition.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalRotation.w
       value: 1
       objectReference: {fileID: 0}
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalRotation.x
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalRotation.y
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalRotation.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalEulerAnglesHint.y
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
+    - target: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 916442621915741506, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
-      propertyPath: m_Name
-      value: Tanker Robot
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
---- !u!4 &4013941236930522135 stripped
+  m_SourcePrefab: {fileID: 100100000, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
+--- !u!4 &8453755995761901881 stripped
 Transform:
-  m_CorrespondingSourceObject: {fileID: 575347054715398136, guid: 8654371615faf8940836e79fbb9ee540, type: 3}
-  m_PrefabInstance: {fileID: 3479146508126374895}
+  m_CorrespondingSourceObject: {fileID: 3208915946827200378, guid: 21fa9d1604da55e4f9d4933fba190da4, type: 3}
+  m_PrefabInstance: {fileID: 6474375558813660739}
   m_PrefabAsset: {fileID: 0}
