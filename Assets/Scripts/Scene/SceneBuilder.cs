@@ -378,10 +378,13 @@ public static class SceneBuilder
         else if (t == 10) npcPrefabPath = "Prefabs/Buildings/WeaponShop";
 
         GameObject npcPrefab = npcPrefabPath != null ? Resources.Load<GameObject>(npcPrefabPath) : null;
+        GameObject npcGo = null;
+        float labelY = 0f;   // 名牌挂载高度（相对 NPC 根节点）
         if (npcPrefab != null)
         {
             var go = Object.Instantiate(npcPrefab, root);
             go.name = "NPC_" + t + "_" + x + "_" + y;
+            npcGo = go;
             // 纯数据驱动回放：NPC 是静态单位装饰，销毁物理组件（碰撞体/刚体）关闭物理引擎开销
             foreach (var col in go.GetComponentsInChildren<Collider>(true)) Object.Destroy(col);
             foreach (var rb in go.GetComponentsInChildren<Rigidbody>(true)) Object.Destroy(rb);
@@ -399,6 +402,8 @@ public static class SceneBuilder
                 var visual = go.transform.Find("Visual");
                 if (visual != null) fc.facingTransform = visual;
             }
+            // 小贩模型高约 1.41，头顶 ~1.36；名牌挂在其正上方
+            if (t == 9) labelY = 1.75f;
         }
         else
         {
@@ -411,12 +416,15 @@ public static class SceneBuilder
             {
                 var go = new GameObject("bld_" + t + "_" + x + "_" + y);
                 go.transform.SetParent(root);
+                npcGo = go;
                 float sH = spr.bounds.size.y;
                 go.transform.position = c + new Vector3(0, sH * 0.5f + 0.11f, 0);
                 var sr = go.AddComponent<SpriteRenderer>();
                 sr.sprite = spr;
                 sr.sortingOrder = 6;
                 go.AddComponent<Billboard>();
+                // Sprite 锚点在垂直中心，名牌挂在精灵顶部之上
+                if (t == 9) labelY = sH * 0.5f + 0.55f;
             }
             else
             {
@@ -427,6 +435,10 @@ public static class SceneBuilder
                         new Vector3(0.5f, 0.7f, 0.5f), col);
             }
         }
+
+        // 小贩头顶常驻名牌：黑色框 + "小贩"
+        if (t == 9 && npcGo != null)
+            NpcNameLabel.Attach(npcGo.transform, "小贩", labelY);
     }
 
     static void AddStandardCube(Transform parent, string name, Vector3 pos, Vector3 scale, Color color)
