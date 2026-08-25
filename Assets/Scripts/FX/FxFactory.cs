@@ -187,6 +187,46 @@ public static class FxFactory
         SpawnEffect(RES_RUBBLE, center, scale, duration);
     }
 
+    /// <summary>枪口开火特效：枪口黄色光点 + 沿射击方向喷出的黄色火舌（快速淡出，像开枪）。</summary>
+    public static void PlayMuzzleFlash(Vector3 center, Vector3 direction)
+    {
+        // 1. 枪口黄色闪光点
+        var dot = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        dot.name = "MuzzleDot";
+        dot.transform.position = center;
+        dot.transform.localScale = new Vector3(0.22f, 0.22f, 1f);
+        var rend = dot.GetComponent<MeshRenderer>();
+        rend.sharedMaterial = MatLib.Get(new Color(1f, 0.9f, 0.3f, 1f));
+        rend.sharedMaterial.mainTexture = MatLib.dotTex;
+        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rend.receiveShadows = false;
+        var col = dot.GetComponent<Collider>();
+        if (col != null) Object.Destroy(col);
+        dot.AddComponent<Billboard>();
+        var f = dot.AddComponent<MuzzleFlashFx>();
+        f.duration = 0.14f;
+
+        // 2. 枪口火舌：沿射击方向喷出的黄色光柱，快速缩短淡出
+        if (direction.sqrMagnitude < 0.0001f) direction = Vector3.forward;
+        direction = direction.normalized;
+        var go = new GameObject("MuzzleFire");
+        go.transform.position = center;
+        var lr = go.AddComponent<LineRenderer>();
+        lr.useWorldSpace = true;
+        lr.positionCount = 2;
+        lr.SetPosition(0, center);
+        lr.SetPosition(1, center + direction * 0.5f);
+        lr.startWidth = 0.06f;
+        lr.endWidth = 0.012f;
+        lr.sharedMaterial = MatLib.Get(Color.white);
+        lr.startColor = new Color(1f, 0.85f, 0.25f, 1f);
+        lr.endColor = new Color(1f, 0.6f, 0.1f, 0.4f);
+        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        lr.receiveShadows = false;
+        var ff = go.AddComponent<MuzzleFireFx>();
+        ff.duration = 0.12f;
+    }
+
     /// <summary>统一从 Resources 加载 + 实例化 + 缩放 + 透明度 + 定时回收；follow 非空时挂到目标下跟随。</summary>
     static void SpawnEffect(string resPath, Vector3 center, float scale, float duration, float alpha = 1f, Transform follow = null)
     {
@@ -308,5 +348,54 @@ public class FadeScale : MonoBehaviour
         float s = Mathf.Lerp(scaleFrom, 1f, Mathf.Clamp01(k * 6f));
         transform.localScale = _base * s;
         if (k >= 1f) Destroy(gameObject);
+    }
+}
+
+/// <summary>枪口闪光快速淡出（黄色光点，duration 秒内从亮到透明）。</summary>
+public class MuzzleFlashFx : MonoBehaviour
+{
+    public float duration = 0.14f;
+    float _t;
+    MeshRenderer _rend;
+    MaterialPropertyBlock _mpb;
+    void Start() { _rend = GetComponent<MeshRenderer>(); _mpb = new MaterialPropertyBlock(); }
+    void Update()
+    {
+        if (FxFactory.IsPaused()) return;
+        _t += Time.deltaTime;
+        float k = 1f - Mathf.Clamp01(_t / duration);
+        if (_rend != null)
+        {
+            _mpb.SetColor("_Color", new Color(1f, 0.85f, 0.25f, k));
+            _rend.SetPropertyBlock(_mpb);
+        }
+        if (k <= 0f) Destroy(gameObject);
+    }
+}
+
+/// <summary>枪口火舌快速缩短 + 淡出（黄色光柱，duration 秒内收回）。</summary>
+public class MuzzleFireFx : MonoBehaviour
+{
+    public float duration = 0.12f;
+    float _t;
+    LineRenderer _lr;
+    Vector3 _from, _dir;
+    void Start()
+    {
+        _lr = GetComponent<LineRenderer>();
+        if (_lr != null) { _from = _lr.GetPosition(0); _dir = _lr.GetPosition(1) - _from; }
+    }
+    void Update()
+    {
+        if (FxFactory.IsPaused()) return;
+        _t += Time.deltaTime;
+        float k = 1f - Mathf.Clamp01(_t / duration);
+        if (_lr != null)
+        {
+            _lr.SetPosition(1, _from + _dir * k);
+            _lr.startColor = new Color(1f, 0.85f, 0.25f, k);
+            _lr.endColor = new Color(1f, 0.6f, 0.1f, 0.4f * k);
+        }
+        if (k <= 0f) Destroy(gameObject);
     }
 }

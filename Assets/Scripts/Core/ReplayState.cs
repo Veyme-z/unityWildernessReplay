@@ -367,7 +367,8 @@ public class StateEngine
             if (!seen.Contains(u.id) && !u.dying)
             {
                 u.dying = true;
-                u.dieAt = Time.time + 0.45f;
+                // 野兽播放完整死亡动画（不缩小消失），故给更长销毁时间；其余单位保持 0.45s 缩小消失
+                u.dieAt = Time.time + (u.IsBeast ? 1.3f : 0.45f);
                 if (host != null && !silent) host.OnDie(u);
             }
         }

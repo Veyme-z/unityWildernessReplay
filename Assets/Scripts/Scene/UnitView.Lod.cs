@@ -27,6 +27,10 @@ public partial class UnitView
         // 动画始终独立播放（不被静态化冻结、不受瞬态冷却限制），多几副骨骼的开销可忽略。
         if (state != null && state.type == 14) return;
 
+        // SciFi 模块化角色为多蒙皮模型，LOD 静态化只能烘焙单个部件会导致显示不全（缺头/缺武器）、腿不动，
+        // 因此一律跳过距离 LOD，始终播放完整动画。
+        if (_sciFiVisual) return;
+
         if (_skinned != null && _animator != null)
         {
             if (s_camera == null) s_camera = Camera.main;

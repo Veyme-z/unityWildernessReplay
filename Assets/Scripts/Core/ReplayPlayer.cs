@@ -269,11 +269,30 @@ void OnRoundEntered(int n)
         {
             case "attack":
                 Log("damage", u.DisplayName + " 攻击 " + pos, tt);
-                // 通用射线：防御塔(type=3)用 Tracer、野兽(11~14)只保留攻击动画，均不生成通用 Beam
-                if (u.type != 3 && !u.IsBeast)
-                    FxFactory.Beam(u.pos, wp, new Color(1f, 0.62f, 0.36f));
-                // 防御塔攻击表现：炮塔面向攻击目标 + 目标连线（仅真实 Replay attack 事件触发）
-                if (u.view != null && u.type == 3) u.view.TriggerTowerAttack(wp);
+                // 攻击特效：防御塔(type=3)用 Tracer；野兽=枪口开火特效（角色朝向前方枪口处）；其余单位通用 Beam 弹道
+                if (u.type != 3)
+                {
+                    if (u.IsBeast)
+                    {
+                        // 枪口位置 = 角色朝向(正面)前方 + 枪口高度；火舌沿角色朝向喷出
+                        Vector3 fwd = u.view != null ? u.view.transform.forward : Vector3.forward;
+                        fwd.y = 0f;
+                        if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
+                        fwd.Normalize();
+                        Vector3 muzzle = u.pos + fwd * 0.55f + Vector3.up * 1.15f;
+                        FxFactory.PlayMuzzleFlash(muzzle, fwd);
+                    }
+                    else
+                    {
+                        FxFactory.Beam(u.pos, wp, new Color(1f, 0.62f, 0.36f));
+                    }
+                }
+                // 攻击表现：防御塔炮塔转向/连线；野兽播放射击动画
+                if (u.view != null)
+                {
+                    if (u.type == 3) u.view.TriggerTowerAttack(wp);
+                    else if (u.IsBeast) u.view.TriggerAttack();
+                }
                 break;
             case "build":
                 Log("build", u.DisplayName + " 建造 " + pos, tt);
@@ -499,8 +518,9 @@ void OnRoundEntered(int n)
             if (u.moving)
             {
                 float t = Mathf.Clamp01((now - u.moveStart) / RoundDur);
-                float e = t * t * (3f - 2f * t);
-                u.pos = Vector3.Lerp(u.moveFrom, u.moveTo, e);
+                // 线性匀速插值：回合边界速度连续（持续移动时速度不归零），配合 Animator.speed 匹配，
+                // 避免每回合 smoothstep 缓入缓出导致的"走路一快一慢/滑步/腿不动"。
+                u.pos = Vector3.Lerp(u.moveFrom, u.moveTo, t);
                 if (t >= 1f)
                 {
                     u.pos = u.moveTo;
@@ -511,7 +531,10 @@ void OnRoundEntered(int n)
                 u.animScale = Mathf.Clamp01(u.animScale + Time.deltaTime * 3.2f);
             if (u.dying)
             {
-                u.animScale = Mathf.Clamp01(1f - (u.dieAt - now) / 0.45f);
+                // 野兽播放死亡动画，不随 animScale 缩小（避免"死亡时素材变小"）；
+                // 其余单位保持原有的缩小消失效果
+                if (!u.IsBeast)
+                    u.animScale = Mathf.Clamp01(1f - (u.dieAt - now) / 0.45f);
                 if (now >= u.dieAt)
                 {
                     u.dead = true;
@@ -521,7 +544,16 @@ void OnRoundEntered(int n)
             }
             if (u.view != null)
             {
-                u.view.SetHp(u.hp, u.maxHp);
+                if (u.dying)
+                {
+                    // 死亡时血条随死亡进度清零（前 0.4s 从当前血量减到 0），颜色随之变红
+                    float dpct = Mathf.Clamp01((u.dieAt - now) / 0.4f);
+                    u.view.SetHp(Mathf.RoundToInt(u.hp * dpct), u.maxHp);
+                }
+                else
+                {
+                    u.view.SetHp(u.hp, u.maxHp);
+                }
                 u.view.SetStun(u.stun);
                 // 3D 野兽动画
                 if (u.IsBeast)

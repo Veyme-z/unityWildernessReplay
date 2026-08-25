@@ -41,15 +41,48 @@ public partial class UnitView
         { 4,  new HpBarStyle { yOffset = 2.2f,        widthMul = 1.6f,  thick = 0.10f } },
         { 5,  new HpBarStyle { yFactor = 0.55f,       widthMul = 1f,    thick = 0.05f, depth = 0.025f } }, // 围墙：深度减半防过厚
         { 7,  new HpBarStyle { yFactor = 0.65f,       widthMul = 1f,    thick = 0.05f } },
-        { 11, new HpBarStyle { yOffset = 0.4f,        widthMul = 1.3f,  thick = 0.10f } },
-        { 12, new HpBarStyle { yOffset = -0.2f,       widthMul = 1.3f,  thick = 0.10f } },
-        { 13, new HpBarStyle { yOffset = 1.8f,        widthMul = 2.5f,  thick = 0.10f } },
-        { 14, new HpBarStyle { yOffset = 1.8f,        widthMul = 2f,    thick = 0.10f } },
+        // 野兽统一为 SciFi 模块化角色（等身高）：血条位于头顶上方、宽度适中（不再按旧模型 2.5× 放大）
+        { 11, new HpBarStyle { yOffset = 0.35f,       widthMul = 0.9f,  thick = 0.08f } },
+        { 12, new HpBarStyle { yOffset = 0.35f,       widthMul = 0.9f,  thick = 0.08f } },
+        { 13, new HpBarStyle { yOffset = 0.35f,       widthMul = 1f,    thick = 0.08f } },
+        { 14, new HpBarStyle { yOffset = 0.35f,       widthMul = 1f,    thick = 0.08f } },
     };
 
     static readonly HpBarStyle HP_BAR_DEFAULT = new HpBarStyle { yFactor = 0.55f, widthMul = 1f, thick = 0.05f };
 
     static Material s_hpFillMat;
+
+    Transform _hpText;      // 血条上方血量数值（3D 文本）
+    TextMesh _hpTextMesh;
+
+    /// <summary>血条填充颜色：机器人(野兽)常态黄色、低血量(<30%)变红；其余单位 绿→黄→红。</summary>
+    Color HpFillColor(float pct)
+    {
+        if (state != null && state.IsBeast)
+            return pct > 0.3f ? HP_COLOR_ROBOT : new Color(1f, 0.231f, 0.188f);
+        if (pct > 0.6f) return new Color(0.267f, 0.925f, 0.435f);  // 绿
+        if (pct > 0.3f) return new Color(1f, 0.788f, 0.302f);      // 黄
+        return new Color(1f, 0.231f, 0.188f);                       // 红
+    }
+
+    /// <summary>创建血条上方的血量数值（3D 文本，面朝相机）。</summary>
+    void EnsureHpText()
+    {
+        if (_hpText != null) return;
+        var go = new GameObject("HpText");
+        go.transform.SetParent(transform, false);
+        _hpText = go.transform;
+        _hpTextMesh = go.AddComponent<TextMesh>();
+        _hpTextMesh.font = UiFonts.Get();
+        _hpTextMesh.fontSize = 120;
+        _hpTextMesh.characterSize = 0.06f;
+        _hpTextMesh.anchor = TextAnchor.MiddleCenter;
+        _hpTextMesh.alignment = TextAlignment.Center;
+        _hpTextMesh.color = Color.white;
+        _hpTextMesh.text = "";
+        go.AddComponent<Billboard>();
+        _hpText.localPosition = new Vector3(0, _hpY + 0.12f, 0);
+    }
 
     /// <summary>估算 GameObject 的包围盒高度</summary>
     float EstimateHeight(GameObject go)
@@ -64,17 +97,27 @@ public partial class UnitView
         return hasRenderer ? bounds.size.y : 2f;
     }
 
-    /// <summary>估算 GameObject 的水平包围盒宽度（XZ 最大值）</summary>
+    /// <summary>估算 GameObject 的水平包围盒宽度（XZ 最大值，排除武器网格，避免枪械把血条撑得过长）</summary>
     float EstimateWidth(GameObject go)
     {
         var bounds = new Bounds(go.transform.position, Vector3.zero);
         bool hasRenderer = false;
         foreach (var r in go.GetComponentsInChildren<Renderer>())
         {
+            if (IsWeaponRenderer(r)) continue;
             bounds.Encapsulate(r.bounds);
             hasRenderer = true;
         }
         return hasRenderer ? Mathf.Max(bounds.size.x, bounds.size.z) : 0.5f;
+    }
+
+    /// <summary>渲染器是否为枪械武器节点（SciFi 步枪/手枪/霰弹/狙击/动态武器）</summary>
+    static bool IsWeaponRenderer(Renderer r)
+    {
+        if (r == null || r.gameObject == null) return false;
+        string n = r.gameObject.name;
+        return n == "AssaultRifle" || n == "Pistol" || n == "Shotgun" || n == "SniperRifle"
+               || n == "SciFiWeapon" || n.IndexOf("Rifle", System.StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     /// <summary>将 Prefab 中扁平的 Quad 血条在运行时升级为 3D Cube 网格</summary>
@@ -122,9 +165,15 @@ public partial class UnitView
         }
         _hpFill.localPosition = new Vector3(0, _hpY, 0);
         _hpFill.localRotation = Quaternion.identity;
+        // 血条始终面朝相机：角色移动/转身时不被侧向遮挡（避免"移动时血条不显示"）
+        if (_hpFill.GetComponent<Billboard>() == null)
+            _hpFill.gameObject.AddComponent<Billboard>();
         if (_hpFillRend == null) _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
         if (_hpFillRend != null) { _hpFillRend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; _hpFillRend.receiveShadows = false; }
         if (_mpb == null) _mpb = new MaterialPropertyBlock();
+
+        // 血量数值文本
+        EnsureHpText();
     }
 
     void EnsureRing()

@@ -31,6 +31,7 @@ public partial class UnitView : MonoBehaviour
     Vector3 _lodBaseScale = Vector3.one; // 静态 LOD 网格基准缩放（1/lossyScale 补偿后，待机浮动在其上叠加）
     float _transientAnimUntil = 0f; // 远处野兽攻击/死亡时临时恢复动画的截止时间（真实时间）
     float _lastTransientEnter = -10f; // 上次进入瞬态动画的时间（冷却用，避免频繁攻击的野兽一直保持动画）
+    bool _sciFiVisual;              // 是否 SciFi 模块化角色（多蒙皮，禁用距离 LOD 静态化，保证部件完整 + 走路腿动）
 
     // ── 平滑转向 ──
     Vector3 _prevPos;
@@ -150,11 +151,18 @@ public partial class UnitView : MonoBehaviour
         var pv = GetComponentInChildren<Pickable>();
         if (pv != null) pv.view = this;
 
+        // SciFiHeroPBR 模块化角色替换野兽外观（隐藏旧模型 + 换模型 + 覆盖动画 + 按类型染色）。
+        // 必须在 UpgradeHpTo3D / CalibrateBaseScale 之前执行，使血条/缩放按新模型计算。
+        if (state.type >= 11 && state.type <= 14)
+            SetupSciFiBeastVisual();
+
         // 阴影/入场特效已在 Prefab 资产源头根治（野兽 prefab 渲染器关阴影、底层 Robot 模型移除 FX Hex），
         // 此处不再需要运行时遍历补救。
         UpgradeHpTo3D();
         EnsureRing();
-        CalibrateBaseScale(1.5f);
+        // 野兽体型按类型递增（11 最小 → 14 最大），其余单位保持原基准
+        float beastSize;
+        CalibrateBaseScale(BEAST_SIZE.TryGetValue(state.type, out beastSize) ? beastSize : 1.5f);
         SetHp(state.hp, state.maxHp);
     }
 
@@ -252,6 +260,8 @@ public partial class UnitView : MonoBehaviour
         Renderer[] rs = GetComponentsInChildren<Renderer>();
         for (int i = 0; i < rs.Length; i++)
         {
+            // 排除枪械武器：横向延伸的枪会撑大包围盒，导致同体型不同武器的野兽被缩得不一样大
+            if (IsWeaponRenderer(rs[i])) continue;
             combined.Encapsulate(rs[i].bounds);
             float w = Mathf.Max(rs[i].bounds.size.x, rs[i].bounds.size.z);
             if (w > maxW) maxW = w;
@@ -326,9 +336,12 @@ public partial class UnitView : MonoBehaviour
         float fillW = _hpW;
         _hpFill.localScale = new Vector3(fillW * pct, _hpThick, _hpDepth);
         _hpFill.localPosition = new Vector3(-fillW * 0.5f * (1f - pct), _hpY, 0);
-        // 血条颜色按阵营/类型恒定：机器人黄 / 红方红 / 蓝方蓝 / 中立绿（不再随血量百分比变色）
-        _mpb.SetColor("_Color", GetHpColor());
+        // 血条颜色随血量百分比变化（绿→黄→红）
+        _mpb.SetColor("_Color", HpFillColor(pct));
         _hpFillRend.SetPropertyBlock(_mpb);
+        // 血量数值（每回合随 replay 的 health 字段变化）
+        if (_hpTextMesh != null)
+            _hpTextMesh.text = hp > 0 ? hp + "/" + maxHp : "";
     }
 
     public void SetStun(bool stun)
