@@ -53,9 +53,10 @@ public class TaskBadgeManager : MonoBehaviour
         var all = FindObjectsOfType<TaskBadgeManager>();
         for (int i = 0; i < all.Length; i++)
             if (all[i] != this) { Destroy(this); return; }
-        EnsureSharedVideo("TaskVideos/working.mp4");
-        EnsureSharedVideo("TaskVideos/success.mp4");
-        EnsureSharedVideo("TaskVideos/fail.mp4");
+        EnsureSharedVideo(TaskCardBadge.CLAIM_VIDEO);
+        EnsureSharedVideo(TaskCardBadge.WORKING_VIDEO);
+        EnsureSharedVideo(TaskCardBadge.SUCCESS_VIDEO);
+        EnsureSharedVideo(TaskCardBadge.FAIL_VIDEO);
     }
 
     /// <summary>创建/复用某个任务视频的全局共享播放器（隐藏对象）：Prepare 完成即循环播放进共享 RT。

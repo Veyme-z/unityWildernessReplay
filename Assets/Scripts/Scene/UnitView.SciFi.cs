@@ -160,15 +160,43 @@ public partial class UnitView
         }
     }
 
-    /// <summary>获取枪口世界位置：优先取右手持枪骨骼，其次手部骨骼；失败返回 false。</summary>
-    public bool TryGetMuzzle(out Vector3 worldPos)
+    /// <summary>获取枪口世界位置（方向感知）：沿射击方向 shootDir 在当前激活武器网格(枪)的包围盒上
+    /// 取"最远的顶点"作为枪口——枪口随角色朝向/攻击动画变化，火舌从真实枪管前端喷出。
+    /// 回退：持枪手骨骼 + 方向前伸；全部失败返回 false。</summary>
+    public bool TryGetMuzzle(Vector3 shootDir, out Vector3 worldPos)
     {
+        shootDir.y = 0f;
+        if (shootDir.sqrMagnitude < 0.0001f) shootDir = Vector3.forward;
+        shootDir.Normalize();
         if (_body != null)
         {
+            // 武器网格：当前型号激活的那把枪（AssaultRifle/Shotgun/SniperRifle），包围盒取沿方向最远顶点
+            foreach (var sr in _body.GetComponentsInChildren<SkinnedMeshRenderer>(false))
+            {
+                if (!sr.gameObject.activeSelf) continue;
+                if (SlotOf(sr.gameObject.name) == "weapon")
+                {
+                    Bounds b = sr.bounds;
+                    Vector3 best = b.center;
+                    float bestDot = float.MinValue;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        Vector3 c = b.min + new Vector3(
+                            (i & 1) == 0 ? 0f : b.size.x,
+                            ((i >> 1) & 1) == 0 ? 0f : b.size.y,
+                            ((i >> 2) & 1) == 0 ? 0f : b.size.z);
+                        float d = Vector3.Dot(c, shootDir);
+                        if (d > bestDot) { bestDot = d; best = c; }
+                    }
+                    worldPos = best;
+                    return true;
+                }
+            }
+            // 回退：持枪手骨骼 / 手部骨骼 / 枪节点
             var t = FindBoneInHierarchy(_body, "ArmPosition_Right");
             if (t == null) t = FindBoneInHierarchy(_body, "Hand_Right");
             if (t == null) t = FindBoneInHierarchy(_body, "AssaultRifle");
-            if (t != null) { worldPos = t.position; return true; }
+            if (t != null) { worldPos = t.position + shootDir * 0.4f; return true; }
         }
         worldPos = Vector3.zero;
         return false;

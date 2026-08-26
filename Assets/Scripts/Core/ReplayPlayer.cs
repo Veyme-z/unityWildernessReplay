@@ -274,12 +274,15 @@ void OnRoundEntered(int n)
                 {
                     if (u.IsBeast)
                     {
-                        // 枪口位置 = 角色朝向(正面)前方 + 枪口高度；火舌沿角色朝向喷出
+                        // 射击方向 = 角色朝向（武器随角色转身，枪口随方向变化）
                         Vector3 fwd = u.view != null ? u.view.transform.forward : Vector3.forward;
                         fwd.y = 0f;
                         if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
                         fwd.Normalize();
-                        Vector3 muzzle = u.pos + fwd * 0.55f + Vector3.up * 1.15f;
+                        // 枪口 = 沿射击方向在当前武器网格上实测的枪管前端；找不到再回退固定偏移
+                        Vector3 muzzle;
+                        if (u.view == null || !u.view.TryGetMuzzle(fwd, out muzzle))
+                            muzzle = u.pos + fwd * 0.55f + Vector3.up * 1.15f;
                         FxFactory.PlayMuzzleFlash(muzzle, fwd);
                     }
                     else

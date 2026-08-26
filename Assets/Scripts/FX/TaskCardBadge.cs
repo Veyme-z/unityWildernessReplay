@@ -7,26 +7,26 @@ using UnityEngine.Video;
 public enum TaskCardState
 {
     Hidden,     // 不渲染
-    Intro,      // 灰色 "接受任务"
-    Working,    // 蓝色 "破解中..."（点数循环 / 视频）
-    Success,    // 绿色 "✓ 通过"（success 视频，播完淡出销毁；视频失败降级纯色+弹跳）
-    Fail        // 红色 "× 失败"（fail 视频，播完淡出销毁；视频失败降级纯色+抖动）
+    Intro,      // 领取任务（执行任务第一个回合，claim 视频循环播放）
+    Working,    // 破解中...（working 视频循环）
+    Success,    // 解锁成功（unlock_success 视频，播完淡出销毁；视频失败降级纯色+弹跳）
+    Fail        // 解锁失败（unlock_fail 视频，播完淡出销毁；视频失败降级纯色+抖动）
 }
 
 /// <summary>
 /// 开拓者头顶任务卡片：Quad 底板 + TextMesh 文字全部程序生成。
-/// 四种状态：Intro(接受任务) / Working(破解中) / Success(✓ 通过) / Fail(× 失败)。
+/// 四种状态：Intro(领取任务) / Working(破解中) / Success(解锁成功) / Fail(解锁失败)。
 /// 由 TaskBadgeManager 动态创建，挂在开拓者 UnitView.transform 下跟随移动，LateUpdate 面向相机。
 ///
 /// ══ 渲染层（Phase 2 全部实现）══
-///  - Intro   ：底板 MPB _MainTex ← Resources.Load("Sprites/task") 图片（不叠文字，至少展示 2 回合）
+///  - Intro   ：底板 MPB _MainTex ← 全局共享 claim.mp4「领取任务」视频 RT（循环播放，至少展示 2 回合）
 ///  - Working ：底板 MPB _MainTex ← TaskBadgeManager 全局共享 working 视频 RT（游戏开始即就绪循环播放；
 ///              视频自带"破解中"字样故不叠文字）
-///  - Success/Fail：底板 MPB _MainTex ← 全局共享 success.mp4 / fail.mp4 视频 RT（循环、看完一遍淡出，
-///              视频自带 ✓/× 字样故不叠文字）
+///  - Success/Fail：底板 MPB _MainTex ← 全局共享 unlock_success.mp4 / unlock_fail.mp4 视频 RT（看完一遍淡出，
+///              视频自带"解锁成功/解锁失败"字样故不叠文字）
 ///  全局共享视频由 TaskBadgeManager.EnsureSharedVideo 在游戏开始即 Prepare + 循环播放，卡片对应状态
 ///  直接显示共享 RT——立即可用，无中间加载态（本地 VideoSlot 仅作共享未就绪时的回退）。
-///  视频加载失败回退纯色+文字
+///  视频加载失败回退：Intro→task.png 图片；Working/Success/Fail→纯色+文字
 ///
 /// 组件结构 / SetState / IsFinished / CurrentState 对外接口保持不变，仅替换内部"渲染层"。
 /// </summary>
@@ -35,10 +35,11 @@ public class TaskCardBadge : MonoBehaviour
     static Material s_sharedBgMat;          // 所有卡片共享背景材质（MPB 改色，可 GPU Instancing 合批）
     static Texture2D s_introTex;            // Intro 状态底板贴图（Resources 懒加载缓存）
 
-    const string RES_TASK_TEX = "Sprites/task";        // Intro 底板图（「接受任务」，Assets/Resources/Sprites/task.png）
-    const string WORKING_VIDEO = "TaskVideos/working.mp4";  // Working 视频（StreamingAssets 下，WebGL 相对 URL）
-    const string SUCCESS_VIDEO = "TaskVideos/success.mp4";  // Success 视频（✓ 通过）
-    const string FAIL_VIDEO    = "TaskVideos/fail.mp4";     // Fail 视频（× 失败）
+    const string RES_TASK_TEX = "Sprites/task";        // Intro 视频加载失败时的兜底图（「接受任务」，Assets/Resources/Sprites/task.png）
+    public const string CLAIM_VIDEO    = "TaskVideos/claim.mp4";          // Intro 领取任务视频（执行任务第一个回合）
+    public const string WORKING_VIDEO  = "TaskVideos/working.mp4";        // Working 破解中视频（StreamingAssets 下，WebGL 相对 URL）
+    public const string SUCCESS_VIDEO  = "TaskVideos/unlock_success.mp4"; // Success 解锁成功视频（密码正确）
+    public const string FAIL_VIDEO     = "TaskVideos/unlock_fail.mp4";    // Fail 解锁失败视频（密码错误）
 
     const float FADE_TIME = 0.2f;           // 淡入/淡出时长
     const float RESULT_DURATION = 1.5f;     // Success/Fail 展示时长（播完淡出销毁）
@@ -169,8 +170,8 @@ public class TaskCardBadge : MonoBehaviour
         _txtGo = txt.gameObject;
 
         // 结果视频（success/fail）提前后台 Prepare：结果态来临时立即可从头播放一遍再淡出，
-        // 不等本地 Prepare（否则结果到了还要等就绪，且不能保证从头）。working 用全局共享播放器（见
-        // TaskBadgeManager.EnsureSharedVideo），不在此重复准备。
+        // 不等本地 Prepare（否则结果到了还要等就绪，且不能保证从头）。working/claim 走全局共享播放器（见
+        // TaskBadgeManager.EnsureSharedVideo），不在此重复准备（本地 slot 仅作共享未就绪的回退）。
         EnsureVideo(SUCCESS_VIDEO).player.Prepare();
         EnsureVideo(FAIL_VIDEO).player.Prepare();
     }
@@ -222,11 +223,9 @@ public class TaskCardBadge : MonoBehaviour
         switch (state)
         {
             case TaskCardState.Intro:
-                // 视频预载由 TaskBadgeManager 的全局共享播放器负责（游戏开始即就绪），
-                // 卡片只需显示 task.png（「接受任务」）；Working/结果态直接引用共享 RT——全程无加载态
-                _stateColor = Color.white;              // 底板是图片，不 tint（tex×_Color，须白）
-                _shownUrl = null;
-                SetMainTexture(IntroTex());             // 底板一直显示 task.png（「接受任务」）
+                // 执行任务第一个回合播放「领取任务」视频（全局共享已就绪则立即可用；未就绪保持 task.png 兜底）
+                _stateColor = Color.white;
+                BeginClaimVideo();
                 break;
             case TaskCardState.Working:
                 BeginWorkingVideo();                    // 就绪→直接上视频；未就绪→保持 Intro 图，就绪后无缝接管
@@ -331,6 +330,35 @@ public class TaskCardBadge : MonoBehaviour
         else
         {
             if (_shownUrl == null) SetMainTexture(IntroTex());  // 未就绪且无当前画面 → Intro 图兜底（无白底）
+            slot.player.Prepare();
+        }
+    }
+
+    /// <summary>进入 Intro：让「领取任务」视频接管底板（逻辑同 BeginWorkingVideo，优先全局共享已就绪 RT）。
+    /// 加载失败降级为 task.png 图片（不叠文字，图片自带「接受任务」字样）。</summary>
+    void BeginClaimVideo()
+    {
+        var shared = TaskBadgeManager.GetSharedVideoRT(CLAIM_VIDEO);
+        if (shared != null)
+        {
+            _shownUrl = CLAIM_VIDEO;
+            SetMainTexture(shared);
+            return;
+        }
+        var slot = EnsureVideo(CLAIM_VIDEO);
+        if (slot.failed)
+        {
+            SetMainTexture(IntroTex());          // 降级：task.png 图片兜底
+            return;
+        }
+        if (slot.prepared && slot.rt != null)
+        {
+            _shownUrl = CLAIM_VIDEO;
+            SetMainTexture(slot.rt);
+        }
+        else
+        {
+            if (_shownUrl == null) SetMainTexture(IntroTex());  // 未就绪且无当前画面 → Intro 图兜底
             slot.player.Prepare();
         }
     }
@@ -481,6 +509,7 @@ public class TaskCardBadge : MonoBehaviour
     {
         switch (_state)
         {
+            case TaskCardState.Intro:   return CLAIM_VIDEO;
             case TaskCardState.Working: return WORKING_VIDEO;
             case TaskCardState.Success: return SUCCESS_VIDEO;
             case TaskCardState.Fail:    return FAIL_VIDEO;
