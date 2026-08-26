@@ -24,9 +24,6 @@ ShaderCache/
 # --- Unity License ---
 Unity_lic.alf
 
-# --- Large Asset Store Packages (素材安装包,超大不入库,保留本地磁盘) ---
-Assets/Resources/SciFiHeroPBR/SRP/*.zip
-
 # --- Packages Caches (DO NOT ignore manifest.json & packages-lock.json) ---
 /Packages/cache/
 /Packages/Library/
