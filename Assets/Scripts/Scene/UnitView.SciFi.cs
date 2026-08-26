@@ -35,10 +35,10 @@ public partial class UnitView
     /// <summary>野兽体型（目标宽度，11→14 依次增大）：11 最小，14 最大。</summary>
     static readonly Dictionary<int, float> BEAST_SIZE = new Dictionary<int, float>
     {
-        { 11, 1.30f },
-        { 12, 1.45f },
-        { 13, 1.65f },
-        { 14, 1.85f },
+        { 11, 1.20f },
+        { 12, 1.30f },
+        { 13, 1.50f },
+        { 14, 1.70f },
     };
 
     /// <summary>把野兽外观替换为 SciFi 模块化角色：隐藏旧模型、按型号组合部件、配动画、染色。资源缺失时静默保留原外观。</summary>

@@ -158,11 +158,16 @@ public partial class UnitView : MonoBehaviour
 
         // 阴影/入场特效已在 Prefab 资产源头根治（野兽 prefab 渲染器关阴影、底层 Robot 模型移除 FX Hex），
         // 此处不再需要运行时遍历补救。
-        UpgradeHpTo3D();
-        EnsureRing();
-        // 野兽体型按类型递增（11 最小 → 14 最大），其余单位保持原基准
+        // 先校准体型缩放(_baseScale)，血条再按缩放后的尺寸定位（UnitView.Hp.UpgradeHpTo3D），否则会被埋进模型
         float beastSize;
         CalibrateBaseScale(BEAST_SIZE.TryGetValue(state.type, out beastSize) ? beastSize : 1.5f);
+        // 立即按体型写一次 body 缩放并同步缓存：Seek/进度条跳转新建视图时 animScale 恒为 1、与 _prevAnimScale 初始值相等，
+        // 若等 LateUpdate 的"变化才写"会导致 _baseScale 永不生效 → 机器人以原生尺寸渲染（大小与设置不符）。
+        // 正常出生路径随后 SetAnimScale(0) 会再次触发缩放入场，不受影响。
+        _prevAnimScale = state.animScale;
+        if (_body != null) _body.localScale = Vector3.one * state.animScale * _baseScale;
+        UpgradeHpTo3D();
+        EnsureRing();
         SetHp(state.hp, state.maxHp);
     }
 
@@ -336,8 +341,8 @@ public partial class UnitView : MonoBehaviour
         float fillW = _hpW;
         _hpFill.localScale = new Vector3(fillW * pct, _hpThick, _hpDepth);
         _hpFill.localPosition = new Vector3(-fillW * 0.5f * (1f - pct), _hpY, 0);
-        // 血条颜色随血量百分比变化（绿→黄→红）
-        _mpb.SetColor("_Color", HpFillColor(pct));
+        // 血条颜色按阵营恒定（机器人黄、红方红、蓝方蓝、中立绿）
+        _mpb.SetColor("_Color", GetHpColor());
         _hpFillRend.SetPropertyBlock(_mpb);
         // 血量数值（每回合随 replay 的 health 字段变化）
         if (_hpTextMesh != null)

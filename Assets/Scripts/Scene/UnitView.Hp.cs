@@ -10,13 +10,13 @@ public partial class UnitView
     /// <summary>防御塔(3)血条顶部安全偏移：在 VisualHeight() 塔顶高度之上再抬高，确保清晰悬浮在炮塔正上方。</summary>
     const float TOWER_HP_TOP_PADDING = 1.1f;
 
-    // ── 血条颜色（按阵营/类型恒定，不再随血量百分比变色）──
+    // ── 血条颜色（按阵营/类型恒定，不随血量百分比变色）──
     static readonly Color HP_COLOR_ROBOT      = new Color(1f, 0.788f, 0.302f);    // #FFC94D 机器人黄
     static readonly Color HP_COLOR_DEFENDER   = new Color(1f, 0.176f, 0.333f);    // #FF2D55 红方
     static readonly Color HP_COLOR_CHALLENGER = new Color(0f, 0.478f, 1f);        // #007AFF 蓝方
     static readonly Color HP_COLOR_NEUTRAL    = new Color(0.267f, 0.925f, 0.435f); // #44EC6F 中立绿
 
-    /// <summary>血条颜色：野兽(11-14 机器人)统一黄色；defender 红色；challenger 蓝色；无阵营中立单位保持绿色。</summary>
+    /// <summary>血条颜色：机器人(11-14 野兽)统一黄色与红方区分；defender 红色；challenger 蓝色；中立单位绿色。</summary>
     Color GetHpColor()
     {
         if (state != null && state.IsBeast) return HP_COLOR_ROBOT;
@@ -54,16 +54,6 @@ public partial class UnitView
 
     Transform _hpText;      // 血条上方血量数值（3D 文本）
     TextMesh _hpTextMesh;
-
-    /// <summary>血条填充颜色：机器人(野兽)常态黄色、低血量(<30%)变红；其余单位 绿→黄→红。</summary>
-    Color HpFillColor(float pct)
-    {
-        if (state != null && state.IsBeast)
-            return pct > 0.3f ? HP_COLOR_ROBOT : new Color(1f, 0.231f, 0.188f);
-        if (pct > 0.6f) return new Color(0.267f, 0.925f, 0.435f);  // 绿
-        if (pct > 0.3f) return new Color(1f, 0.788f, 0.302f);      // 黄
-        return new Color(1f, 0.231f, 0.188f);                       // 红
-    }
 
     /// <summary>创建血条上方的血量数值（3D 文本，面朝相机）。</summary>
     void EnsureHpText()
@@ -135,6 +125,8 @@ public partial class UnitView
         {
             modelH = _body != null ? EstimateHeight(_body.gameObject) : 2f;
             modelW = _body != null ? EstimateWidth(_body.gameObject) : 0.5f;
+            // 野兽体型按类型校准（_baseScale≈1.15~2），若按未缩放的原生尺寸定位，血条会被埋进模型（表现为"部分机器人头上没血条"）
+            if (state != null && state.IsBeast) { modelH *= _baseScale; modelW *= _baseScale; }
         }
         _hpW = Mathf.Max(modelW, 0.3f);
         // 高度/宽度/厚度/深度按单位类型查配置表（见 HP_BAR_STYLES），未配置的走默认
