@@ -33,13 +33,14 @@ public partial class UnitView
         public float widthMul;  // 宽度倍率（基于 max(modelW, 0.3)）
         public float thick;     // 厚度（Y 方向）
         public float depth;     // 深度（Z 方向）；0 = 与厚度相同
+        public float yShift;    // 额外恒定垂直偏移（世界单位），在 yFactor/yOffset 之后叠加（微调血条高低用）
     }
 
     static readonly Dictionary<int, HpBarStyle> HP_BAR_STYLES = new Dictionary<int, HpBarStyle>
     {
         { 3,  new HpBarStyle { yOffset = TOWER_HP_TOP_PADDING, widthMul = 1.28f, thick = 0.12f } },
         { 4,  new HpBarStyle { yOffset = 2.2f,        widthMul = 1.6f,  thick = 0.10f } },
-        { 5,  new HpBarStyle { yFactor = 0.55f,       widthMul = 1f,    thick = 0.05f, depth = 0.025f } }, // 围墙：深度减半防过厚
+        { 5,  new HpBarStyle { yFactor = 0.55f,       widthMul = 1f,    thick = 0.05f, depth = 0.025f, yShift = -0.5f } }, // 围墙：深度减半防过厚，血条下移 0.5
         { 7,  new HpBarStyle { yFactor = 0.65f,       widthMul = 1f,    thick = 0.05f } },
         // 野兽统一为 SciFi 模块化角色（等身高）：血条位于头顶上方、宽度适中（不再按旧模型 2.5× 放大）
         { 11, new HpBarStyle { yOffset = 0.35f,       widthMul = 0.9f,  thick = 0.08f } },
@@ -133,6 +134,7 @@ public partial class UnitView
         HpBarStyle st;
         if (!HP_BAR_STYLES.TryGetValue(state.type, out st)) st = HP_BAR_DEFAULT;
         _hpY = st.yFactor > 0f ? modelH * st.yFactor : modelH + st.yOffset;
+        _hpY += st.yShift;
         _hpW *= st.widthMul;
         _hpThick = st.thick;
         _hpDepth = st.depth > 0f ? st.depth : st.thick;
@@ -157,9 +159,17 @@ public partial class UnitView
         }
         _hpFill.localPosition = new Vector3(0, _hpY, 0);
         _hpFill.localRotation = Quaternion.identity;
-        // 血条始终面朝相机：角色移动/转身时不被侧向遮挡（避免"移动时血条不显示"）
-        if (_hpFill.GetComponent<Billboard>() == null)
+        // 血条默认始终面朝相机（角色移动/转身时不被侧向遮挡）。围墙(type 5)例外：不加 Billboard——
+        // 血条由 LateUpdate 固定为世界水平朝向（与横墙一致），既不随城墙 Y 旋转、也不随相机晃动。
+        if (state.type == 5)
+        {
+            var bb = _hpFill.GetComponent<Billboard>();
+            if (bb != null) Destroy(bb);
+        }
+        else if (_hpFill.GetComponent<Billboard>() == null)
+        {
             _hpFill.gameObject.AddComponent<Billboard>();
+        }
         if (_hpFillRend == null) _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
         if (_hpFillRend != null) { _hpFillRend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; _hpFillRend.receiveShadows = false; }
         if (_mpb == null) _mpb = new MaterialPropertyBlock();

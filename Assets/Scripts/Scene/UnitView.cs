@@ -324,6 +324,11 @@ public partial class UnitView : MonoBehaviour
                 _body.localRotation = Quaternion.identity;
         }
 
+        // ── 城墙血条：固定世界水平朝向（与横墙一致）。不随城墙 Y 旋转（竖墙血条会跟着竖起来），
+        //    也不面朝相机（避免视角移动时血条跟着晃动）。墙是静态的，此赋值廉价且稳定。 ──
+        if (state.type == 5 && _hpFill != null)
+            _hpFill.rotation = Quaternion.identity;
+
         // ── 子模块：动画状态同步 + 野兽距离 LOD + 夜晚角色光环（实现在 UnitView.Anim.cs / UnitView.Lod.cs / UnitView.Aura.cs） ──
         UpdateAnimationState(isMovingNow, posChanged, moveDir);
         UpdateLod();

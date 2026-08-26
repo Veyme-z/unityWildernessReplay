@@ -52,6 +52,7 @@ MonoBehaviour:
   muzzleTransform: {fileID: 0}
   idleYawOffset: 180
   turnSpeed: 540
+  pitchLimit: 70
   recoilDistance: 0.12
   aimHoldDuration: 1
   recoilKickDuration: 0.05
