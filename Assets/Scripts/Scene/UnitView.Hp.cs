@@ -116,7 +116,7 @@ public partial class UnitView
     {
         var cubeMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
         float modelH, modelW;
-        if (state.type == 3 && _towerVisual != null && _towerVisual.IsSetup)
+        if (state.IsTower && _towerVisual != null && _towerVisual.IsSetup)
         {
             // 新塔模型按 Renderer 包围盒调整 HP 条
             modelH = _towerVisual.VisualHeight();

@@ -55,6 +55,9 @@ public partial class UnitView : MonoBehaviour
     static readonly Dictionary<int, string> UNIT_PREFABS = new Dictionary<int, string>
     {
         {3, "Prefabs/Buildings/Tower"},
+        {30, "Prefabs/Buildings/Tower"}, // 加特林（武器工事）
+        {31, "Prefabs/Buildings/Tower"}, // 电磁狙击炮（武器工事）
+        {32, "Prefabs/Buildings/Tower"}, // 火箭发射台（武器工事）
         {4, "Prefabs/Buildings/Base"},
         {5, "Prefabs/Buildings/Wall"},
         {6, "Prefabs/Units/Worker"},
@@ -175,8 +178,8 @@ public partial class UnitView : MonoBehaviour
     void ConfigureFromUnitPrefab()
     {
         StripPhysics();
-        // 建筑(3/4/5) 和 NPC(8/9) 锁死旋转；Worker(6)/Pioneer(7) 允许转身
-        bool isBuilding = (state.type == 3 || state.type == 4 || state.type == 5 || state.type == 10);
+        // 建筑(武器工事30/31/32、基地4、墙5、武器商店10，兼容旧塔3) 和 NPC(8/9) 锁死旋转；Worker(6)/Pioneer(7) 允许转身
+        bool isBuilding = (state.IsTower || state.type == 4 || state.type == 5 || state.type == 10);
         _lockRotation = isBuilding || (state.type == 8 || state.type == 9);
         _prevPos = transform.position;
 
@@ -225,8 +228,8 @@ public partial class UnitView : MonoBehaviour
             }
         }
 
-        // 防御塔 (type=3)：替换内部 Visual 为已转换的 Cube Tower Defense 模型
-        if (state.type == 3)
+        // 武器工事 (30/31/32，兼容旧塔 3)：替换内部 Visual 为已转换的 Cube Tower Defense 模型
+        if (state.IsTower)
         {
             SetupTowerVisual();
         }

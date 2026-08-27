@@ -237,8 +237,8 @@ public class PlaybackControlPanelController : MonoBehaviour
         if (_slider!=null&&_slider.maxValue!=_totalRounds) { _slider.minValue=1; _slider.maxValue=_totalRounds; }
         if (_slider!=null) _slider.SetValueWithoutNotify(p.cur);
         if (_roundText!=null) _roundText.text=p.cur+" / "+_totalRounds+" 回合";
-        // 游戏上限（任务书）：围墙≤28、防御塔≤3、每队队员≤3
-        const int MAX_WALL = 28, MAX_TOWER = 3, MAX_MEMBER = 3;
+        // 游戏上限（任务书）：围墙≤20（6×6 边框格数）、防御塔≤3、每队队员≤3
+        const int MAX_WALL = 20, MAX_TOWER = 3, MAX_MEMBER = 3;
         Color colRed  = new Color(1f, 0.176f, 0.333f);   // defender = 红方
         Color colBlue = new Color(0f, 0.478f, 1f);       // challenger = 蓝方
 
@@ -249,7 +249,7 @@ public class PlaybackControlPanelController : MonoBehaviour
                 if(u.teamId!=st.teamId) continue;
                 if(u.dying||u.dead) continue;
                 if(u.type==4) hp=u.hp;
-                else if(u.type==3) towers++;
+                else if(u.IsTower) towers++;
                 else if(u.type==5) walls++;
                 else if(u.type==6||u.type==7) members++;
                 if(u.backpacks!=null)

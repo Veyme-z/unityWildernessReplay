@@ -49,6 +49,13 @@ public partial class UnitView
             _towerVisual.Fire(targetWorldPos);
     }
 
+    /// <summary>触发武器工事多目标攻击表现（加特林 N 落点：N 条弹道），落点为世界坐标数组。</summary>
+    public void TriggerTowerAttackMulti(Vector3[] targetWorldPositions)
+    {
+        if (_towerVisual != null && _towerVisual.IsSetup)
+            _towerVisual.Fire(targetWorldPositions);
+    }
+
     /// <summary>清除防御塔攻击表现（Seek 跳转后调用）。</summary>
     public void ResetTowerAttack()
     {

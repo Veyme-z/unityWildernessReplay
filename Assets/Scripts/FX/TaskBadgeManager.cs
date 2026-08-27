@@ -107,26 +107,42 @@ public class TaskBadgeManager : MonoBehaviour
             if (_player == null) return;
         }
 
+        // 统计当前显示 claim(Intro)/working(Working) 的卡片数：共享视频只在有卡片需要显示时才播放，
+        // 空闲期（无任务卡片）全部暂停省解码——WebGL 并发解码正是卡顿源（对齐 LycheeMap"只播当前显示的"）。
+        int claimCards = 0, workingCards = 0;
+        foreach (var kv in _activeBadges)
+        {
+            if (kv.Value == null) continue;
+            switch (kv.Value.CurrentState)
+            {
+                case TaskCardState.Intro: claimCards++; break;
+                case TaskCardState.Working: workingCards++; break;
+            }
+        }
+
         // 共享任务视频：① 轮询 isPrepared（WebGL 上 prepareCompleted 可能不触发）兜底建立 RT + 绑定；
-        // ② 随播放/暂停冻结（回放暂停时视频同步冻结，恢复续播）
+        // ② 仅"有卡片显示它"才播放：claim 在 Intro 显示、working 在 Working 显示（Intro 阶段预卷，
+        //    保证 Working 进入即开即用不闪黑）；success/fail 只预热不播（结果态由卡片自有播放器从头播）。
         foreach (var kv in s_sharedPlayers)
         {
             VideoPlayer vp = kv.Value;
             if (vp == null) continue;
             string file = kv.Key;
-            if (vp.isPrepared)
+            if (!vp.isPrepared) continue;
+            RenderTexture rt;
+            if (!s_sharedRTs.TryGetValue(file, out rt) || rt == null)
             {
-                RenderTexture rt;
-                if (!s_sharedRTs.TryGetValue(file, out rt) || rt == null)
-                {
-                    rt = new RenderTexture(Mathf.Max(2, (int)vp.width), Mathf.Max(2, (int)vp.height), 0);
-                    s_sharedRTs[file] = rt;
-                    vp.targetTexture = rt;
-                    s_sharedLengths[file] = vp.length;
-                }
-                if (_player.playing && !vp.isPlaying) vp.Play();
-                else if (!_player.playing && vp.isPlaying) vp.Pause();
+                rt = new RenderTexture(Mathf.Max(2, (int)vp.width), Mathf.Max(2, (int)vp.height), 0);
+                s_sharedRTs[file] = rt;
+                vp.targetTexture = rt;
+                s_sharedLengths[file] = vp.length;
             }
+            bool want;
+            if (file == TaskCardBadge.CLAIM_VIDEO) want = _player.playing && claimCards > 0;
+            else if (file == TaskCardBadge.WORKING_VIDEO) want = _player.playing && (workingCards > 0 || claimCards > 0);  // Intro 预卷
+            else want = false;   // success/fail 只预热不播
+            if (want) { if (!vp.isPlaying) vp.Play(); }
+            else if (vp.isPlaying) vp.Pause();
         }
 
         // Seek 检测：暂停状态下 cur 发生变化（拖动进度条 / 跳回合）→ 所有结果卡片（Success/Fail）

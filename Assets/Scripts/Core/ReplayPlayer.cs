@@ -127,9 +127,9 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
                 engine.units.Remove(id);
             }
 
-            // Seek 跳转：清除防御塔残留的攻击表现（炮塔转向/后坐力/粒子）
+            // Seek 跳转：清除武器工事残留的攻击表现（炮塔转向/后坐力/粒子）
             foreach (var u in engine.units.Values)
-                if (u.view != null && u.type == 3)
+                if (u.view != null && u.IsTower)
                     u.view.ResetTowerAttack();
         }
 
@@ -138,11 +138,9 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
             if (u.view == null && !u.dead && !u.dying)
                 u.view = UnitView.Create(u, unitsRoot);
 
-        if (CheckBaseDestroyed())
-        {
-            if (playing) SetPlaying(false);
+        // 结算以 replay 最后一轮为准：不因中途基地被毁提前弹出（判题器 finish 决定胜负）
+        if (cur >= TotalRounds)
             ShowSettlement();
-        }
 
         RefreshResources();
     }
@@ -227,8 +225,8 @@ void OnRoundEntered(int n)
         Log("damage", msg, to.teamType);
         if (from != null)
         {
-            // 通用射线：防御塔(type=3)用 Tracer、野兽(11~14)只保留攻击动画，均不生成通用 Beam
-            if (from.type != 3 && !from.IsBeast)
+            // 通用射线：武器工事(30/31/32，兼容旧3)用 Tracer、野兽(11~14)只保留攻击动画，均不生成通用 Beam
+            if (!from.IsTower && !from.IsBeast)
                 FxFactory.Beam(from.pos, to.pos, new Color(1f, 0.62f, 0.36f));
             if (from.view != null && from.IsBeast) from.view.TriggerAttack();
         }
@@ -269,8 +267,8 @@ void OnRoundEntered(int n)
         {
             case "attack":
                 Log("damage", u.DisplayName + " 攻击 " + pos, tt);
-                // 攻击特效：防御塔(type=3)用 Tracer；野兽=枪口开火特效（角色朝向前方枪口处）；其余单位通用 Beam 弹道
-                if (u.type != 3)
+                // 攻击特效：武器工事(30/31/32，兼容旧3)用 Tracer；野兽=枪口开火特效（角色朝向前方枪口处）；其余单位通用 Beam 弹道
+                if (!u.IsTower)
                 {
                     if (u.IsBeast)
                     {
@@ -290,10 +288,30 @@ void OnRoundEntered(int n)
                         FxFactory.Beam(u.pos, wp, new Color(1f, 0.62f, 0.36f));
                     }
                 }
-                // 攻击表现：防御塔炮塔转向/连线；野兽播放射击动画
+                // 攻击表现：武器工事按类型分派特效；野兽播放射击动画
                 if (u.view != null)
                 {
-                    if (u.type == 3) u.view.TriggerTowerAttack(wp);
+                    if (u.IsTower)
+                    {
+                        if (u.type == 30)
+                        {
+                            // 加特林：N 条弹道（落点数 = 等级，1~5）
+                            u.view.TriggerTowerAttackMulti(AttackWorldTargets(c));
+                        }
+                        else if (u.type == 32)
+                        {
+                            // 火箭发射台：无弹道，落点中心爆炸（3×3 AoE）+ 震屏
+                            u.view.TriggerTowerAttack(wp);
+                            FxFactory.PlayBombEffect(wp);
+                            if (CameraManager.Instance != null)
+                                CameraManager.Instance.CameraShake(0.4f, 0.25f);
+                        }
+                        else
+                        {
+                            // 电磁狙击炮（31）等：单发穿透激光
+                            u.view.TriggerTowerAttack(wp);
+                        }
+                    }
                     else if (u.IsBeast) u.view.TriggerAttack();
                 }
                 break;
@@ -411,6 +429,19 @@ void OnRoundEntered(int n)
         }
     }
 
+    /// <summary>攻击落点（格子坐标，可能是数组）→ 世界坐标数组（加特林多弹道用）。</summary>
+    Vector3[] AttackWorldTargets(ReplayCommand c)
+    {
+        if (c.targets != null && c.targets.Count > 0)
+        {
+            var wps = new Vector3[c.targets.Count];
+            for (int i = 0; i < c.targets.Count; i++)
+                wps[i] = engine.CellToWorld(c.targets[i].x, c.targets[i].y);
+            return wps;
+        }
+        return new Vector3[] { engine.CellToWorld(c.x, c.y) };
+    }
+
     public void OnTalk(UnitState u, string text)
     {
         Log("info", u.DisplayName + "：" + text);
@@ -503,12 +534,6 @@ void OnRoundEntered(int n)
                 engine.Diff(prev, nrec, true);
                 cur = nn;
                 OnRoundEntered(nn);
-                if (CheckBaseDestroyed())
-                {
-                    SetPlaying(false);
-                    ShowSettlement();
-                    break;
-                }
             }
             RefreshResources();
         }
@@ -578,26 +603,6 @@ void OnRoundEntered(int n)
             _resourceView.ApplyFrame(data.rounds[cur - 1].resources);
     }
 
-    // ---------- 基地摧毁检测 ----------
-    /// <summary>任一方基地血量归零 / 濒死 / 已死亡 → true</summary>
-    bool CheckBaseDestroyed()
-    {
-        foreach (var kv in engine.teams)
-        {
-            bool hasBase = false;
-            foreach (var u in engine.units.Values)
-            {
-                if (u.type == 4 && u.teamId == kv.Key && u.hp > 0 && !u.dying && !u.dead)
-                {
-                    hasBase = true;
-                    break;
-                }
-            }
-            if (!hasBase) return true;
-        }
-        return false;
-    }
-
     // ---------- 结算画面 ----------
     GameObject _settlementOverlay;
     void ShowSettlement()
@@ -617,27 +622,20 @@ void OnRoundEntered(int n)
         string p0Result, p1Result;
         int p0Score, p1Score;
 
-        // 优先取 finish 记录里的结果，按 teamId 对齐（避免列表顺序把红蓝搞反）
+        // 结果取判题器 finish（按 teamId 对齐，避免列表顺序把红蓝搞反）；无 finish 时按基地血量推断
         var f = data.finish;
         var resultById = new Dictionary<string, string>();
-        var scoreById = new Dictionary<string, int>();
         if (f != null && f.players != null)
             foreach (var pr in f.players)
-            {
                 resultById[pr.teamId] = pr.result;
-                scoreById[pr.teamId] = pr.totalScore;
-            }
 
         if (resultById.ContainsKey(red.teamId) && resultById.ContainsKey(blue.teamId))
         {
             p0Result = resultById[red.teamId];
             p1Result = resultById[blue.teamId];
-            p0Score  = scoreById[red.teamId];
-            p1Score  = scoreById[blue.teamId];
         }
         else
         {
-            // 无 finish 记录时从引擎状态推断（基地先爆的一方失败）
             int redHp = -1, blueHp = -1;
             foreach (var u in engine.units.Values)
             {
@@ -647,9 +645,11 @@ void OnRoundEntered(int n)
             }
             p0Result = redHp <= 0 ? "defeat" : (blueHp <= 0 ? "victory" : "draw");
             p1Result = blueHp <= 0 ? "defeat" : (redHp <= 0 ? "victory" : "draw");
-            p0Score  = red.score;
-            p1Score  = blue.score;
         }
+
+        // 积分取最后一轮的引擎数据（与回放过程显示一致；判题器 finish.totalScore 是含末尾加分（任务/击杀/生存）的最终值，不在此处展示）
+        p0Score = red.score;
+        p1Score = blue.score;
 
         var ctrl = SettlementPanelController.Create(
             p0Name, p0Result, p0Score, p1Name, p1Result, p1Score,

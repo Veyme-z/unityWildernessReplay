@@ -195,12 +195,28 @@ public static class ReplayParser
                     taskAnswer = MiniJson.Str(cd, "taskAnswer") ?? "",
                     targetName = MiniJson.Str(cd, "targetName") ?? ""
                 };
-                var tp = MiniJson.Obj(cd, "targetPos");
-                if (tp != null)
+                // targetPos 两种格式：新格式 attack 为坐标数组 [{x,y},...]（加特林 N 落点，电磁狙击炮/火箭 1 落点）；旧格式为单对象
+                var tpArr = MiniJson.Arr(cd, "targetPos");
+                if (tpArr != null && tpArr.Count > 0)
                 {
                     cmd.hasTarget = true;
-                    cmd.x = MiniJson.Int(tp, "x");
-                    cmd.y = MiniJson.Int(tp, "y");
+                    foreach (var tpRaw in tpArr)
+                    {
+                        var td = MiniJson.Dict(tpRaw);
+                        if (td == null) continue;
+                        cmd.targets.Add(new ReplayPoint { x = MiniJson.Int(td, "x"), y = MiniJson.Int(td, "y") });
+                    }
+                    if (cmd.targets.Count > 0) { cmd.x = cmd.targets[0].x; cmd.y = cmd.targets[0].y; }
+                }
+                else
+                {
+                    var tp = MiniJson.Obj(cd, "targetPos");
+                    if (tp != null)
+                    {
+                        cmd.hasTarget = true;
+                        cmd.x = MiniJson.Int(tp, "x");
+                        cmd.y = MiniJson.Int(tp, "y");
+                    }
                 }
                 var stps = MiniJson.Arr(cd, "skillTargetPos");
                 if (stps != null)

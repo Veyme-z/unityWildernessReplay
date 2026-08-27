@@ -380,7 +380,9 @@ public class TaskCardBadge : MonoBehaviour
         if (slot.prepared && slot.rt != null)
         {
             slot.player.isLooping = false;              // 结果视频播一遍就停（末尾停帧，淡出销毁）
-            _resultDuration = Mathf.Max(_resultDuration, (float)slot.player.length);   // 播一遍淡出
+            // 淡出以"视频实际播完"为准（见 Update 的 videoDone 判定），此处时长 +1s 只做兜底超时——
+            // WebGL 上视频实际播放可能比名义时长慢，纯计时到点淡出会导致"没播完卡片就消失"。
+            _resultDuration = Mathf.Max(_resultDuration, (float)slot.player.length + 1f);
             slot.player.time = 0;                       // 从头（fresh/暂停态 seek 立即生效）
             PlayVideo(slot);                            // 从头播放（不可见）
             // 不设 _shownUrl / MainTex：保持当前画面（working 视频/Intro 图）不动，
@@ -417,7 +419,7 @@ public class TaskCardBadge : MonoBehaviour
         }
         slot.player.targetTexture = slot.rt;
         if (slot.url == SUCCESS_VIDEO || slot.url == FAIL_VIDEO)
-            _resultDuration = Mathf.Max(_resultDuration, (float)slot.player.length + 0.1f);   // 看完一遍结果视频再淡出
+            _resultDuration = Mathf.Max(_resultDuration, (float)slot.player.length + 1f);   // 兜底超时（实际淡出以视频播完为准）
 
         // working 就绪后才后台准备 success/fail（结果态备用）：避免并发 Prepare 抢解码器
         if (slot.url == WORKING_VIDEO && !_resultPreloadStarted)
@@ -661,10 +663,17 @@ public class TaskCardBadge : MonoBehaviour
             ApplyAlpha(1f);
         }
 
-        // Success/Fail 播完（看完一遍视频）→ 淡出 → Hidden
+        // Success/Fail 播完（看完一遍视频）→ 淡出 → Hidden。
+        // 以"视频实际播到末尾"为准触发（WebGL 播放可能比名义时长慢，纯计时会"没播完就消失"）；
+        // _resultDuration（时长+1s）只做兜底超时，避免视频播完事件/位置判定异常时卡片一直挂着。
         if (_state == TaskCardState.Success || _state == TaskCardState.Fail)
         {
-            if (_elapsed >= _resultDuration)
+            bool videoDone = false;
+            VideoSlot res;
+            if (_videos.TryGetValue(TargetDisplayUrl(), out res) && res != null
+                && res.player != null && res.prepared && res.player.length > 0f)
+                videoDone = res.player.time >= res.player.length - 0.05f;
+            if (videoDone || _elapsed >= _resultDuration)
             {
                 _fadingOut = true;
                 _fadingIn = false;

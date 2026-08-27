@@ -34,6 +34,9 @@ public static class ItemNameCn
             case "upgradewallmaxhp": return "围墙耐久强化";
             case "upgradetowermaxhp": return "防御塔耐久强化";
             case "upgradetowerattack": return "防御塔攻击强化";
+            case "weaponupgradevoucher": return "武器升级道具";
+            case "wallupgradevoucher": return "围墙升级道具";
+            case "stationupgradevoucher": return "基地升级道具";
             default:       return en;
         }
     }

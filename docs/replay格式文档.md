@@ -21,8 +21,9 @@
 | ------- | ---------- | ------------------------------------------------------------ |
 | `type`  | `string`   | 固定值 `"start"`                                             |
 | `map`   | `object`   | 地图配置信息                                                 |
-| `roles` | `object`   | 初始角色配置，key 为角色名（如 `"tower"`、`"base"`、`"pioneer"`、wall、blackBear、skeletonMage、deathWarrior、taskOfficer、vendor、weaponShop），value 为该角色的属性对象，3个NPC的血量为0就行 |
+| `roles` | `object`   | 初始角色配置，key 为角色名（`"gatling"`、`"railgun"`、`"rocket"`、`"station"`、`"wall"`、`"worker"`、`"pioneer"`、`"challengerTaskPoint1"`、`"challengerTaskPoint2"`、`"defenderTaskPoint1"`、`"defenderTaskPoint2"`、`"vendor"`、`"weaponShop"`、`"blackBear"`、`"skeletonMage"`、`"deathWarrior"`、`"cavalry"`），value 为该角色的属性对象；6 个 NPC（challengerTaskPoint1/challengerTaskPoint2/defenderTaskPoint1/defenderTaskPoint2/vendor/weaponShop）只有 `mapType` 字段，**没有 `health`/`attackPower` 字段**；野兽（blackBear/skeletonMage/deathWarrior/cavalry）有 `health`/`attackPower`/`mapType`；建筑（gatling/railgun/rocket/station/wall）额外含 `level`=1（起始等级=升级次数+1）；英雄/野兽 `level` 默认 0 不输出 |
 | `teams` | `object[]` | 队伍列表，每个队伍包含 `roles`、`task`、`allTaskInfo` 等，结构见 [2.3 teams](#24-teams-队伍) |
+| `buildZones` | `object` | 各队伍建造分区（v6.2），key 为队伍类型 `"challenger"`/`"defender"`，结构见 [1.4 buildZones](#14-buildzones-建造分区) |
 
 ### 1.2 `map` 对象
 
@@ -38,20 +39,53 @@
 | 编号 | 名称                                              | 说明           |
 | ---- | ------------------------------------------------- | -------------- |
 | `0`  | 空地                                              | 可通行空白格子 |
-| `3`  | 防御塔 (tower)                                    | 防御建筑       |
+| `2`  | 水 (water)                                        | 不可通行水域   |
+| `30` | 加特林炮台 (gatling)  | 武器工事（只出现在 `roles` 中，不出现在 `data`） |
+| `31` | 电磁狙击炮 (railgun) | 武器工事（只出现在 `roles` 中，不出现在 `data`） |
+| `32` | 火箭发射台 (rocket)  | 武器工事（只出现在 `roles` 中，不出现在 `data`） |
 | `4`  | 基地 (station)                                    | 出生点/大本营  |
-| `5`  | 围墙（wall）                                      | 围墙           |
-| `6`  | 工人（worker）                                    | 工人           |
-| `7`  | 开拓者 (pioneer)                                  | 开拓者单位     |
-| 8    | 任务官taskOfficer                                 |                |
-| 9    | 小贩vendor                                        |                |
-| 10   | 武器商店weaponShop                                |                |
-| `11` | 黑熊 (blackBear) --对应judger的smallBeast         | 野兽怪物       |
-| `12` | 骷髅法师 (skeletonMage) --对应judger的midlleBeast | 野兽怪物       |
-| `13` | 死亡战士 (deathWarrior) --对应judger的largeBeast  | 野兽怪物       |
-| `14` | 骑兵 (cavalry) --对应judger的bossBeast            | 野兽怪物       |
+| `5`  | 围墙（wall）                                      | 围墙（只出现在 `roles` 中，不出现在 `data`） |
+| `6`  | 工人（worker）                                    | 工人（只出现在 `roles` 中，不出现在 `data`） |
+| `7`  | 开拓者 (pioneer)                                  | 开拓者单位（只出现在 `roles` 中，不出现在 `data`） |
+| `40` | 挑战者任务点1 (challengerTaskPoint1) | 团队专属任务点，仅本队可 executeTask（只出现在 `roles`/`npc` 中，不出现在 `data`） |
+| `41` | 挑战者任务点2 (challengerTaskPoint2) | 团队专属任务点，仅本队可 executeTask（只出现在 `roles`/`npc` 中，不出现在 `data`） |
+| `42` | 防守者任务点1 (defenderTaskPoint1)   | 团队专属任务点，仅本队可 executeTask（只出现在 `roles`/`npc` 中，不出现在 `data`） |
+| `43` | 防守者任务点2 (defenderTaskPoint2)   | 团队专属任务点，仅本队可 executeTask（只出现在 `roles`/`npc` 中，不出现在 `data`） |
+| 9    | 小贩vendor                                        | 中立 NPC（只出现在 `roles`/`npc` 中，不出现在 `data`） |
+| 10   | 武器商店weaponShop                                | 中立 NPC（只出现在 `roles`/`npc` 中，不出现在 `data`） |
+| `11` | 黑熊 (blackBear) --对应judger的smallBeast         | 野兽怪物（只出现在 `roles` 中，不出现在 `data`） |
+| `12` | 骷髅法师 (skeletonMage) --对应judger的midlleBeast | 野兽怪物（只出现在 `roles` 中，不出现在 `data`） |
+| `13` | 死亡战士 (deathWarrior) --对应judger的largeBeast  | 野兽怪物（只出现在 `roles` 中，不出现在 `data`） |
+| `14` | 骑兵 (cavalry) --对应judger的bossBeast            | 野兽怪物（只出现在 `roles` 中，不出现在 `data`） |
+| `23` | 石头矿 (stone)                                    | 可采集资源点   |
+| `24` | 铁矿 (iron)                                       | 可采集资源点   |
+| `25` | 铜矿 (copper)                                     | 可采集资源点   |
 
-### 1.4 `start` 完整 JSON 样例
+### 1.4 `buildZones` 建造分区（v6.2）
+
+围墙与武器工事的可建区域约束（矩形边界，含端点）：
+
+| 字段       | 类型      | 说明                                                         |
+| ---------- | --------- | ------------------------------------------------------------ |
+| `wallRing` | `object`  | 以基地为中心 6×6 正方形外框 `{minX, maxX, minY, maxY}`，**围墙仅可建在边框格上**（共 20 格） |
+| `towerZone`| `object`  | 该正方形的严格内部 4×4 矩形 `{minX, maxX, minY, maxY}`，**武器工事仅可建在此区域内**（基地占地 2×2 除外，实际可建 12 格） |
+
+当前地图的取值：挑战方 `wallRing = {minX:7, minY:19, maxX:12, maxY:24}`、`towerZone = {minX:8, minY:20, maxX:11, maxY:23}`；防守方 `wallRing = {minX:28, minY:7, maxX:33, maxY:12}`、`towerZone = {minX:29, minY:8, maxX:32, maxY:11}`。
+
+```json
+"buildZones": {
+  "challenger": {
+    "wallRing": {"minX": 7, "maxX": 12, "minY": 19, "maxY": 24},
+    "towerZone": {"minX": 8, "maxX": 11, "minY": 20, "maxY": 23}
+  },
+  "defender": {
+    "wallRing": {"minX": 28, "maxX": 33, "minY": 7, "maxY": 12},
+    "towerZone": {"minX": 29, "maxX": 32, "minY": 8, "maxY": 11}
+  }
+}
+```
+
+### 1.5 `start` 完整 JSON 样例
 
 ```json
 {
@@ -60,18 +94,41 @@
     "mapName": "attack_map",
     "width": 41,
     "height": 32,
-    "data": [0,0,0,1,1,1,0,2,2,0,0,0,5,0,1,1,0,3,0,0,0,0,0,1,1,0,0,2,2,2,1,1,0,0,0,0,0,1,1,1,1,  ...]
+    "data": [0,0,0,1,1,1,0,2,2,0,0,0,5,0,1,1,0,0,0,0,0,0,0,1,1,0,0,2,2,2,1,1,0,0,0,0,0,1,1,1,1,  ...]
   },
   "roles": {
-    "tower": {
-      "mapType": 3,
-      "health": 600,
+    "gatling": {
+      "mapType": 30,
+      "health": 1000,
       "attackPower": 20,
+      "level": 1,
+    },
+    "railgun": {
+      "mapType": 31,
+      "health": 1000,
+      "attackPower": 20,
+      "level": 1,
+    },
+    "rocket": {
+      "mapType": 32,
+      "health": 1000,
+      "attackPower": 20,
+      "level": 1,
     },
     "pioneer": {
       "mapType": 7,
       "health": 200,
       "attackPower": 0,
+    }
+  },
+  "buildZones": {
+    "challenger": {
+      "wallRing": {"minX": 7, "maxX": 12, "minY": 19, "maxY": 24},
+      "towerZone": {"minX": 8, "maxX": 11, "minY": 20, "maxY": 23}
+    },
+    "defender": {
+      "wallRing": {"minX": 28, "maxX": 33, "minY": 7, "maxY": 12},
+      "towerZone": {"minX": 29, "maxX": 32, "minY": 8, "maxY": 11}
     }
   },
   "teams": [
@@ -103,7 +160,7 @@
         "ragTask": [0],
         "dbTask": [0, 0, 0],
         "codeReviewTask": [0, 0],
-        "codeGenerateTask": [0, 0],
+        "codeGenerateTask": [0, 0, 0],
         "osTask": [0, 0, 0]
       },
       "roles": [
@@ -115,7 +172,7 @@
           "attackPower": 0,
           "inControl": false,
           "roadLineType": "",
-          "level": 1,
+          "level": 0,
           "talk": null,
           "commands": [],
           "taskPlayer": false
@@ -150,7 +207,7 @@
         "ragTask": [0],
         "dbTask": [0, 0, 0],
         "codeReviewTask": [0, 0],
-        "codeGenerateTask": [0, 0],
+        "codeGenerateTask": [0, 0, 0],
         "osTask": [0, 0, 0]
       },
       "roles": [
@@ -162,7 +219,7 @@
           "attackPower": 0,
           "inControl": false,
           "roadLineType": "",
-          "level": 1,
+          "level": 0,
           "talk": null,
           "commands": [],
           "taskPlayer": false
@@ -175,7 +232,7 @@
           "attackPower": 0,
           "inControl": false,
           "roadLineType": "",
-          "level": 1,
+          "level": 0,
           "talk": null,
           "commands": [],
           "taskPlayer": false
@@ -197,6 +254,7 @@
 | `type`      | `string`   | 固定值 `"round"`        |
 | `round`     | `integer`  | 当前回合编号，从 1 递增 |
 | `resources` | `object[]` | 地图上的资源点列表      |
+| `npc`       | `object[]` | 中立 NPC 位置列表，元素为 `{"pos": {"x","y"}, "roleName": "challengerTaskPoint1"|"challengerTaskPoint2"|"defenderTaskPoint1"|"defenderTaskPoint2"|"vendor"|"weaponShop"}`，固定 6 个（4 任务点 + vendor + weaponShop） |
 | `news`      | `object[]` | 本回合新闻/事件通知列表 |
 | `teams`     | `object[]` | 参与对局的队伍列表      |
 
@@ -254,7 +312,7 @@
 | `ragTask`          | `integer[]`  | RAG 任务进度                    |
 | `dbTask`           | `integer[3]` | 数据库任务进度                  |
 | `codeReviewTask`   | `integer[2]` | 代码审查任务进度 `[剩余, 总数]` |
-| `codeGenerateTask` | `integer[2]` | 代码生成任务进度                |
+| `codeGenerateTask` | `integer[3]` | 代码生成任务进度（实际为 3 个元素） |
 | `osTask`           | `integer[3]` | OS/系统任务进度                 |
 
 ### 2.7 `roles` 角色
@@ -263,10 +321,12 @@
 | ------------- | ----------------- | ------------------------------------------------------------ |
 | `id`          | `integer`         | 角色唯一 ID                                                  |
 | `pos`         | `object`          | 当前坐标 `{"x": number, "y": number}`                        |
-| `roleType`    | `integer`         | 角色类型编号（3=防御塔，4=基地，7=开拓者， 5=围墙， 6=工人， 野兽11~14，攻击challenger的野怪放到challenger中，同理defender） |
+| `roleType`    | `integer`         | 角色类型编号（30=加特林/31=电磁狙击炮/32=火箭发射台，4=基地，7=开拓者，5=围墙，6=工人，野兽11~14，攻击challenger的野怪放到challenger中，同理defender） |
 | `health`      | `integer`         | 当前血量                                                     |
 | `attackPower` | `integer`         | 攻击力                                                       |
 | `inControl`   | `boolean`         | 是否被控制/眩晕                                              |
+| `roadLineType`| `string`          | 移动路线类型（无路线时为空串 `""`）                          |
+| `level`       | `integer`         | 等级：英雄=经验等级（0 起，0..6）；建筑（基地/武器/围墙）=升级次数+1（1 起，武器 1..5），供前端按 level 渲染不同围墙/武器形象 |
 | `talk`        | `string` / `null` | 角色对话/发言内容                                            |
 | `commands`    | `object[]`        | 本回合执行的动作指令列表                                     |
 | `taskPlayer`  | `boolean`         | 是否为任务执行玩家                                           |
@@ -278,7 +338,7 @@
 | ---------------- | --------- | --------------------------------------- |
 | `action`         | `string`  | 动作类型，见下表                        |
 | `targetName`     | `string`  | 物品类型，详见2.9章武器商店购买内容清单 |
-| `targetPos`      | `object`  | 目标坐标 `{"x": number, "y": number}`   |
+| `targetPos`      | `object` 或 `array` | 目标坐标。attack 为坐标数组 `[{x,y},...]`（加特林传 N 个落点、电磁狙击炮/火箭发射台各传 1 个）；其余动作为单个 `{"x": number, "y": number}` |
 | `skillTargetPos` | `array`   | 技能目标位置（通常为空数组）            |
 | `taskAnswer`     | `string`  | 任务回答内容（提交答案时携带）          |
 | `valid`          | `boolean` | 本次动作是否有效                        |
@@ -299,6 +359,7 @@
 | `"use"`          | 使用     |
 | `"drop"`         | 丢弃     |
 | `"collect"`      | 采集     |
+| `"nothing"`      | 无动作（默认/闲置动作，如野兽无目标时） |
 
 ### 2.9 武器商店购买内容清单
 
@@ -309,7 +370,7 @@
 注：
 
 - 1个id理论上只能出现一次，这里写了多次是为了举例不同action下的格式
-- 2.8章`commands` 动作指令的所有字段都会出现在replay.txt中，没用到的key只会传key，不会传value
+- 2.8章`commands` 动作指令的所有字段都会出现在replay.txt中，没用到的字段值为 `null`（字段恒定存在）
 
 ```json
 {
@@ -350,7 +411,7 @@
         "ragTask": [0],
         "dbTask": [0, 0, 0],
         "codeReviewTask": [0, 0],
-        "codeGenerateTask": [0, 0],
+        "codeGenerateTask": [0, 0, 0],
         "osTask": [0, 0, 0]
       },
       "roles": [
@@ -362,6 +423,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "move",
@@ -380,10 +442,11 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "buy",
-              "targetName": "UpgradeTowerAttack/UpgradeTowerMaxHp/UpgradeWallMaxHp/UpgradeStationMaxHp/FlameBreath/FrostPotion/ThornAmulet/IronWhistle",
+              "targetName": "WeaponUpgradeVoucher/WallUpgradeVoucher/StationUpgradeVoucher/FlameBreath/FrostPotion/ThornAmulet/IronWhistle",
               "valid": true
             }
           ],
@@ -398,10 +461,11 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "use",
-              "targetName": "Medicine/SmallBeastSummonOrder/AcientTablet",
+              "targetName": "Medicine/SmallBeastSummonOrder/AcientTablet/WallUpgradeVoucher",
               "valid": true
             }
           ],
@@ -416,6 +480,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "use",
@@ -438,6 +503,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "use",
@@ -494,6 +560,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "sell",
@@ -512,6 +579,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "build",
@@ -530,6 +598,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "remove",
@@ -551,6 +620,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "collect",
@@ -572,6 +642,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "executeTask",
@@ -589,6 +660,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,  
           "commands": [
             {
               "action": "submitAnswer",
@@ -607,6 +679,7 @@
           "attackPower": 0,
           "inControl": false,
           "talk": null,
+          "level": 0,            
           "commands": [
             {
               "action": "detect",
@@ -618,20 +691,27 @@
           "backpacks": []
         },
         {
-          "id": 10013,
+          "id": 10020,
           "pos": {"x": 34, "y": 29},
-          "roleType": 3,
-          "health": 200,
+          "roleType": 30,
+          "health": 1000,
           "attackPower": 20,
           "inControl": false,
           "talk": null,
+          "level": 3,
           "commands": [
             {
               "action": "attack",
-              "targetPos": {
-                "x": 29,
-                "y": 7
-              },
+              "targetPos": [
+                  {
+                    "x": 29,
+                    "y": 7
+                  },
+                  {
+                    "x": 30,
+                    "y": 7
+                  }
+              ],
               "valid": true
             }
           ],
@@ -662,7 +742,7 @@
 | `teamId`     | `string`  | 队伍 ID                            |
 | `teamName`   | `string`  | 队伍名称                           |
 | `result`     | `string`  | 对局结果：`"victory"` / `"defeat"` |
-| `glodNum`    | `integer` | 最终金币数                         |
+| `goldNum`    | `integer` | 最终金币数                         |
 | `totalScore` | `integer` | 最终总分数                         |
 
 ### 3.3 `finish` 完整 JSON 样例
@@ -675,14 +755,14 @@
       "teamId": "3886",
       "teamName": "队队队",
       "result": "defeat",
-      "glodNum": 0,
+      "goldNum": 0,
       "totalScore": 973
     },
     {
       "teamId": "3980",
       "teamName": "国一wallE斯国一",
       "result": "victory",
-      "glodNum": 4,
+      "goldNum": 4,
       "totalScore": 1490
     }
   ]

@@ -84,7 +84,8 @@ public static class UnitViewSprite
         ScanAllSprites();
         if (_allSprites == null) return false;
         Sprite found = null;
-        if (teamType == "defender" && (type == 4 || type == 3))
+        bool isTower = (type == 3 || type == 30 || type == 31 || type == 32);
+        if (teamType == "defender" && (type == 4 || isTower))
         {
             string blueName = (type == 4) ? "base_blue" : "tower_blue";
             _allSprites.TryGetValue(blueName, out found);

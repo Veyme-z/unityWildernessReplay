@@ -8,10 +8,11 @@ public class UnitState
     public long id;
     public string teamId = "";
     public string teamType = "";    // challenger / defender
-    public int type;                // 4=基地 3=塔 5=墙 6=工人 7=开拓者 11-14=野兽
+    public int type;                // 4=基地 30=加特林/31=电磁狙击炮/32=火箭发射台（武器工事，兼容旧3=防御塔） 5=墙 6=工人 7=开拓者 11-14=野兽
     public int hp = 1;
     public int maxHp = 1;
     public int ap;
+    public int level;               // 等级：武器工事=攻击等级(1~5)；英雄=经验等级(0~6)
     public bool stun;
     public string name = "";
     public List<ReplayCommand> commands = new List<ReplayCommand>();
@@ -31,7 +32,8 @@ public class UnitState
     public UnitView view;
 
     public bool IsBeast { get { return type >= 11; } }
-    public bool IsBuilding { get { return type == 3 || type == 4 || type == 5; } }
+    public bool IsTower { get { return type == 3 || type == 30 || type == 31 || type == 32; } }
+    public bool IsBuilding { get { return IsTower || type == 4 || type == 5; } }
     public string DisplayName { get { return string.IsNullOrEmpty(name) ? "单位" + id : name; } }
 }
 
@@ -237,12 +239,12 @@ public class StateEngine
                         }
                 }
 
-            // 3. 建造：新出现的围墙 (type=5) 或防御塔 (type=3) 记录一次
+            // 3. 建造：新出现的围墙 (type=5) 或武器工事 (30/31/32，兼容旧 3) 记录一次
             foreach (var t in next.teams)
                 foreach (var r in t.roles)
                 {
                     if (prevRoles.ContainsKey(r.id)) continue;
-                    if (r.roleType == 5 || r.roleType == 3)
+                    if (r.roleType == 5 || IsTowerType(r.roleType))
                     {
                         var u = GetUnit(r.id);
                         if (u != null)
@@ -390,6 +392,7 @@ public class StateEngine
             u.teamType = teamType;
             u.hp = r.health;
             u.ap = r.attackPower;
+            u.level = r.level;
             u.stun = r.inControl;
             u.commands = r.commands;
             u.backpacks = r.backpacks;
@@ -416,6 +419,7 @@ public class StateEngine
             hp = r.health,
             maxHp = Mathf.Max(1, r.health),
             ap = r.attackPower,
+            level = r.level,
             stun = r.inControl,
             commands = r.commands,
             backpacks = r.backpacks
@@ -447,7 +451,15 @@ public class StateEngine
                 foreach (var c in r.commands)
                 {
                     if (c.action != "attack" || !c.valid || !c.hasTarget) continue;
-                    if (c.x == victim.x && c.y == victim.y)
+                    // 攻击目标可能是数组（加特林多落点 / 电磁狙击炮/火箭单落点），命中判定遍历全部落点
+                    bool hit = false;
+                    if (c.targets != null && c.targets.Count > 0)
+                    {
+                        foreach (var tp in c.targets)
+                            if (tp.x == victim.x && tp.y == victim.y) { hit = true; break; }
+                    }
+                    else hit = (c.x == victim.x && c.y == victim.y);
+                    if (hit)
                     {
                         var u = GetUnit(r.id);
                         if (u != null) return u;
@@ -459,8 +471,20 @@ public class StateEngine
     public static string UnitName(UnitState u)
     {
         if (!string.IsNullOrEmpty(u.name)) return u.name;
-        return (u.type >= 0 && u.type < TYPE_NAMES.Length ? TYPE_NAMES[u.type] : "单位") + "·" + u.id;
+        return TypeName(u.type) + "·" + u.id;
     }
+
+    /// <summary>类型编号 → 显示名（含武器工事 30/31/32，兼容 TYPE_NAMES 越界）。</summary>
+    public static string TypeName(int type)
+    {
+        if (type == 30) return "加特林炮台";
+        if (type == 31) return "电磁狙击炮";
+        if (type == 32) return "火箭发射台";
+        return (type >= 0 && type < TYPE_NAMES.Length ? TYPE_NAMES[type] : "单位");
+    }
+
+    /// <summary>是否武器工事类型：30 加特林 / 31 电磁狙击炮 / 32 火箭发射台（兼容旧 3 防御塔）。</summary>
+    public static bool IsTowerType(int t) { return t == 3 || t == 30 || t == 31 || t == 32; }
 
     // ---------- 昼夜 ----------
     public static int DayOf(int round) { return (round - 1) / 130 + 1; }

@@ -26,14 +26,15 @@ public class WallOrientation : MonoBehaviour
         public int hyTop, hyBottom; // 横墙两条 y 行（上/下）
         public int vxLeft, vxRight; // 竖墙两列 x（左/右）
         public int vyMin, vyMax;    // 竖墙 y 范围
+        public bool useCorners;     // 是否用拐角件（闭环才用；直线防线不用）
     }
 
     static readonly WallZone[] ZONES =
     {
-        // 红方基地(30,10)防御环
-        new WallZone { hxMin = 29, hxMax = 32, hyTop = 12, hyBottom = 7, vxLeft = 28, vxRight = 33, vyMin = 8, vyMax = 11 },
-        // 蓝方基地(10,24)防御环
-        new WallZone { hxMin = 9,  hxMax = 12, hyTop = 26, hyBottom = 21, vxLeft = 8, vxRight = 13, vyMin = 22, vyMax = 25 },
+        // 红方基地(30,10)防御环（闭环，用拐角件）
+        new WallZone { hxMin = 29, hxMax = 32, hyTop = 12, hyBottom = 7, vxLeft = 28, vxRight = 33, vyMin = 8, vyMax = 11, useCorners = true },
+        // 蓝方基地(9,22)防御墙（按回放实际墙位：y=19 底排 x=7~12 + x=7/x=12 两侧 y=20~24 + 顶 (9,24)），四角用拐角件
+        new WallZone { hxMin = 7,  hxMax = 12, hyTop = 24, hyBottom = 19, vxLeft = 7, vxRight = 12, vyMin = 20, vyMax = 24, useCorners = true },
     };
 
     // 拐角件 Resources 路径（缩放完全由 prefab 自带控制，代码不改）
@@ -54,18 +55,18 @@ public class WallOrientation : MonoBehaviour
         for (int i = 0; i < ZONES.Length; i++)
         {
             var z = ZONES[i];
-            // 四角 → 拐角 prefab
-            if ((cx == z.vxLeft || cx == z.vxRight) && (cy == z.hyBottom || cy == z.hyTop))
+            // 四角 → 拐角 prefab（仅闭环 useCorners=true 才用）
+            if (z.useCorners && (cx == z.vxLeft || cx == z.vxRight) && (cy == z.hyBottom || cy == z.hyTop))
             {
                 UseCornerPrefab(cx, cy, z);
                 return;
             }
-            // 四方向变体
+            // 四方向变体（竖先于横判断：蓝方 x=7 列延伸到 y=24 时优先竖）
             float rotY;
-            if (cx >= z.hxMin && cx <= z.hxMax && cy == z.hyTop) rotY = 0f;
-            else if (cx >= z.hxMin && cx <= z.hxMax && cy == z.hyBottom) rotY = 180f;
-            else if (cx == z.vxRight && cy >= z.vyMin && cy <= z.vyMax) rotY = 90f;
-            else if (cx == z.vxLeft && cy >= z.vyMin && cy <= z.vyMax) rotY = 270f;
+            if (cx == z.vxRight && cy >= z.vyMin && cy <= z.vyMax) rotY = 90f;   // 竖
+            else if (cx == z.vxLeft && cy >= z.vyMin && cy <= z.vyMax) rotY = 270f; // 竖镜像
+            else if (cx >= z.hxMin && cx <= z.hxMax && cy == z.hyTop) rotY = 0f; // 横
+            else if (cx >= z.hxMin && cx <= z.hxMax && cy == z.hyBottom) rotY = 180f; // 横镜像
             else continue; // 不属于该环，查下一个环
             transform.localRotation = Quaternion.Euler(0f, rotY, 0f);
             return;

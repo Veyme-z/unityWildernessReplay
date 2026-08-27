@@ -15,7 +15,8 @@ using UnityEngine;
 ///   - 攻击目标连线（Tracer，从真实枪口到 targetPos）+ 命中闪光圆环，只由真实 Replay attack 事件触发
 ///   - 不自动循环攻击、不修改伤害/攻击范围/Replay 状态
 ///
-/// 所有防御塔统一使用 Minigun 视觉（红方 Tower_Minigun_Red / 蓝方 Tower_Minigun_Blue）。
+/// 武器工事视觉按类型：30 加特林→Minigun / 31 电磁狙击炮→RPG / 32 火箭发射台→Flamethrower
+/// （红方 Tower_X_Red / 蓝方 Tower_X_Blue）。
 /// </summary>
 public class TowerVisualController : MonoBehaviour
 {
@@ -23,6 +24,8 @@ public class TowerVisualController : MonoBehaviour
     static readonly Dictionary<string, string> TURRET_NODES = new Dictionary<string, string>
     {
         { "Minigun", "Minigun" },
+        { "RPG", "Rpg" },
+        { "Flamethrower", "Flamethrower" },
     };
 
     [Header("视觉摆放（本包装 Prefab 根）")]
@@ -63,6 +66,8 @@ public class TowerVisualController : MonoBehaviour
 
     // 枪口无独立节点时，用炮塔前向延伸的距离（世界单位）
     const float MUZZLE_FALLBACK_DIST = 0.7f;
+    // 电磁狙击炮：枪口粒子寿命放大倍数（延长闪光可见时长）
+    const float RAILGUN_MUZZLE_LIFETIME_MULT = 2.5f;
     // 命中圆环阶段：快速淡入 + 保持较亮（剩余时间用于扩大淡出）
     const float HIT_FADE_IN = 0.05f;
     const float HIT_HOLD = 0.10f;
@@ -89,14 +94,26 @@ public class TowerVisualController : MonoBehaviour
     int _lastRound = -1;
     bool _particleFrozen; // 粒子冻结状态缓存，避免暂停期间每帧重复调用 FreezeParticles
 
-    // 攻击目标可视化（Tracer + 命中闪光）
-    LineRenderer _tracer;
+    // 攻击目标可视化（Tracer + 命中闪光）。支持多目标（加特林 N 弹道）：用池复用 LineRenderer/Quad，避免每回合 new。
     Color _tracerColor;
-    float _tracerT;
-    float _tracerDur;
-    Transform _hitRing;
-    MeshRenderer _hitRingRend;
-    float _hitT;
+    readonly List<LineRenderer> _tracerPool = new List<LineRenderer>();
+    readonly List<TracerFx> _activeTracers = new List<TracerFx>();
+    readonly List<Transform> _hitRingPool = new List<Transform>();
+    readonly List<HitRingFx> _activeHitRings = new List<HitRingFx>();
+
+    class TracerFx
+    {
+        public LineRenderer lr;
+        public float t;      // 剩余（1→0）
+        public float dur;
+        public Color color;
+    }
+    class HitRingFx
+    {
+        public Transform tr;
+        public MeshRenderer rend;
+        public float t;      // 经过时间（0→hitRingDuration）
+    }
 
     string _towerType = "";
     string _faction = "";
@@ -106,9 +123,12 @@ public class TowerVisualController : MonoBehaviour
     public bool IsSetup { get { return _setup; } }
     public Transform Turret { get { return _turret; } }
 
-    /// <summary>所有防御塔统一为 Minigun 视觉，返回固定类型 "Minigun"。</summary>
+    /// <summary>武器工事类型 → 塔视觉类型：30 加特林=Minigun / 31 电磁狙击炮=RPG / 32 火箭发射台=Flamethrower（旧塔 3 兜底 Minigun）。</summary>
     public static string ResolveTowerType(UnitView view)
     {
+        int t = view != null && view.state != null ? view.state.type : 3;
+        if (t == 31) return "RPG";
+        if (t == 32) return "Flamethrower";
         return "Minigun";
     }
 
@@ -165,6 +185,26 @@ public class TowerVisualController : MonoBehaviour
             ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         }
 
+        // 电磁狙击炮：延长枪口特效粒子寿命，闪光更明显（Constant 模式存在 constant；曲线模式用 curveMultiplier）
+        if (_towerType == "RPG")
+        {
+            foreach (var ps in _muzzleParticles)
+            {
+                if (ps == null) continue;
+                var main = ps.main;
+                var lt = main.startLifetime;
+                if (lt.mode == ParticleSystemCurveMode.Constant)
+                    lt.constant *= RAILGUN_MUZZLE_LIFETIME_MULT;
+                else if (lt.mode == ParticleSystemCurveMode.TwoConstants)
+                {
+                    lt.constantMin *= RAILGUN_MUZZLE_LIFETIME_MULT;
+                    lt.constantMax *= RAILGUN_MUZZLE_LIFETIME_MULT;
+                }
+                else lt.curveMultiplier *= RAILGUN_MUZZLE_LIFETIME_MULT;
+                main.startLifetime = lt;
+            }
+        }
+
         // 源塔 Muzzle 节点默认被禁用，激活以便枪口特效可用
         if (_muzzlePoint != null) _muzzlePoint.gameObject.SetActive(true);
 
@@ -180,12 +220,20 @@ public class TowerVisualController : MonoBehaviour
         _turret.localRotation = _turretBaseLocalRot * Quaternion.Euler(0f, idleYawOffset, 0f);
     }
 
-    /// <summary>触发一次攻击表现：转向目标 + 后坐力 + 枪口特效 + 目标连线（只由真实 Replay attack 事件调用）。</summary>
-    public void Fire(Vector3 targetWorldPos)
+    /// <summary>触发一次攻击表现：单目标（只由真实 Replay attack 事件调用）。</summary>
+    public void Fire(Vector3 targetWorldPos) { Fire(new Vector3[] { targetWorldPos }); }
+
+    /// <summary>
+    /// 触发一次攻击表现（多目标）：转向主目标 + 后坐力 + 枪口特效 + 按塔类型画弹道。
+    /// 30 加特林(Minigun)=N 条弹道；31 电磁狙击炮(RPG)=单发穿透粗激光；32 火箭发射台(Flamethrower)=无弹道（落点爆炸由 ReplayPlayer 触发）。
+    /// </summary>
+    public void Fire(Vector3[] targetWorldPositions)
     {
         if (!_setup || _turret == null) return;
+        if (targetWorldPositions == null || targetWorldPositions.Length == 0) return;
+        Vector3 primary = targetWorldPositions[0];
 
-        Vector3 fullDir = targetWorldPos - _turret.position;
+        Vector3 fullDir = primary - _turret.position;
         Vector3 dir = fullDir;
         dir.y = 0f;
         if (dir.sqrMagnitude < 0.0001f) dir = _turret.forward;
@@ -209,8 +257,20 @@ public class TowerVisualController : MonoBehaviour
         }
 
         SpawnMuzzleFlash();
-        SpawnTracer(targetWorldPos);
-        SpawnHitRing(targetWorldPos);
+
+        if (_towerType == "Flamethrower") return;          // 火箭发射台：无弹道（爆炸特效由 ReplayPlayer 播放）
+
+        if (_towerType == "RPG")                           // 电磁狙击炮：无弹道轨迹，只枪口闪光 + 落点命中环
+        {
+            SpawnHitRing(primary);
+            return;
+        }
+
+        foreach (var wp in targetWorldPositions)           // 加特林：N 条弹道 + N 个命中闪光
+        {
+            SpawnTracer(wp);
+            SpawnHitRing(wp);
+        }
     }
 
     /// <summary>清除攻击状态（Seek 跳转后调用）：清空转向/后坐力/粒子/闪光/Tracer/命中闪光，复位到待机 180°。</summary>
@@ -260,11 +320,22 @@ public class TowerVisualController : MonoBehaviour
 
     void GetTracerStyle(out Color c, out float sw, out float ew, out float dur)
     {
-        // 三种塔统一为 Minigun 风格（细、快），颜色按阵营（红/蓝）区分
         c = FactionColor();
-        sw = 0.07f;
-        ew = 0.04f;
-        dur = 0.15f;
+        if (_towerType == "RPG")
+        {
+            // 电磁狙击炮：单发穿透激光——粗、亮、持续时间长（能量 = 25×等级，等级越高略粗）
+            float lvl = _view != null && _view.state != null ? Mathf.Clamp(_view.state.level, 1, 5) : 1f;
+            sw = 0.18f + 0.02f * lvl;
+            ew = 0.10f + 0.02f * lvl;
+            dur = 0.6f;
+        }
+        else
+        {
+            // 加特林：细、快弹道（每颗子弹 20 伤害，N 颗）
+            sw = 0.07f;
+            ew = 0.04f;
+            dur = 0.15f;
+        }
     }
 
     /// <summary>阵营特效颜色：防守方红 / 进攻方蓝（与 TeamColorApplicator 的霓虹色一致）。</summary>
@@ -275,49 +346,66 @@ public class TowerVisualController : MonoBehaviour
 
     void SpawnTracer(Vector3 targetWorldPos)
     {
-        float sw, ew;
-        GetTracerStyle(out _tracerColor, out sw, out ew, out _tracerDur);
+        float sw, ew, dur;
+        GetTracerStyle(out _tracerColor, out sw, out ew, out dur);
 
-        if (_tracer == null)
+        LineRenderer lr;
+        if (_tracerPool.Count > 0)
         {
-            var go = new GameObject("TowerTracer");
-            _tracer = go.AddComponent<LineRenderer>();
-            _tracer.useWorldSpace = true;
-            _tracer.positionCount = 2;
-            _tracer.sharedMaterial = MatLib.Get(_tracerColor);
-            _tracer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            _tracer.receiveShadows = false;
+            lr = _tracerPool[0];
+            _tracerPool.RemoveAt(0);
+            lr.sharedMaterial = MatLib.Get(_tracerColor);
         }
         else
         {
-            _tracer.sharedMaterial = MatLib.Get(_tracerColor);
+            var go = new GameObject("TowerTracer");
+            lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = true;
+            lr.positionCount = 2;
+            lr.sharedMaterial = MatLib.Get(_tracerColor);
+            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lr.receiveShadows = false;
         }
 
         Vector3 from = MuzzleWorldPosition();
         Vector3 to = targetWorldPos + Vector3.up * 0.35f;
-        _tracer.SetPosition(0, from);
-        _tracer.SetPosition(1, to);
-        _tracer.startWidth = sw;
-        _tracer.endWidth = ew;
-        _tracer.startColor = _tracerColor;
-        _tracer.endColor = new Color(_tracerColor.r, _tracerColor.g, _tracerColor.b, 0.25f);
-        _tracer.gameObject.SetActive(true);
-        _tracerT = 1f;
+        lr.SetPosition(0, from);
+        lr.SetPosition(1, to);
+        lr.startWidth = sw;
+        lr.endWidth = ew;
+        lr.startColor = _tracerColor;
+        lr.endColor = new Color(_tracerColor.r, _tracerColor.g, _tracerColor.b, 0.25f);
+        lr.gameObject.SetActive(true);
+        _activeTracers.Add(new TracerFx { lr = lr, t = 1f, dur = dur, color = _tracerColor });
     }
 
     void ClearTracer()
     {
-        if (_tracer != null) _tracer.gameObject.SetActive(false);
-        _tracerT = 0f;
+        for (int i = _activeTracers.Count - 1; i >= 0; i--)
+        {
+            var fx = _activeTracers[i];
+            fx.lr.gameObject.SetActive(false);
+            _tracerPool.Add(fx.lr);
+            _activeTracers.RemoveAt(i);
+        }
     }
 
     void SpawnHitRing(Vector3 targetWorldPos)
     {
-        if (_hitRing == null)
+        Transform rt;
+        MeshRenderer rend;
+        if (_hitRingPool.Count > 0)
+        {
+            rt = _hitRingPool[0];
+            _hitRingPool.RemoveAt(0);
+            rend = rt.GetComponent<MeshRenderer>();
+            rt.gameObject.SetActive(true);
+        }
+        else
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
             go.name = "TowerHitRing";
-            var rend = go.GetComponent<MeshRenderer>();
+            rend = go.GetComponent<MeshRenderer>();
             // 独立材质实例：烘焙成色的圆环贴图，不污染 MatLib 共享材质池
             var mat = new Material(MatLib.Shader2D);
             mat.mainTexture = MatLib.CreateRingTex(_tracerColor, 64);
@@ -327,21 +415,24 @@ public class TowerVisualController : MonoBehaviour
             rend.receiveShadows = false;
             var col = go.GetComponent<Collider>();
             if (col != null) Object.Destroy(col);
-            _hitRing = go.transform;
-            _hitRingRend = rend;
+            rt = go.transform;
         }
 
-        _hitRing.position = targetWorldPos + Vector3.up * 0.05f;
-        _hitRing.rotation = Quaternion.Euler(90f, 0f, 0f);
-        _hitRing.localScale = new Vector3(0.25f, 0.25f, 1f);
-        _hitRing.gameObject.SetActive(true);
-        _hitT = 0f; // 经过时间（0 → hitRingDuration）
+        rt.position = targetWorldPos + Vector3.up * 0.05f;
+        rt.rotation = Quaternion.Euler(90f, 0f, 0f);
+        rt.localScale = new Vector3(0.25f, 0.25f, 1f);
+        _activeHitRings.Add(new HitRingFx { tr = rt, rend = rend, t = 0f }); // 经过时间（0 → hitRingDuration）
     }
 
     void ClearHitRing()
     {
-        if (_hitRing != null) _hitRing.gameObject.SetActive(false);
-        _hitT = 0f;
+        for (int i = _activeHitRings.Count - 1; i >= 0; i--)
+        {
+            var fx = _activeHitRings[i];
+            fx.tr.gameObject.SetActive(false);
+            _hitRingPool.Add(fx.tr);
+            _activeHitRings.RemoveAt(i);
+        }
     }
 
     // ---------- 内部 ----------
@@ -432,8 +523,8 @@ public class TowerVisualController : MonoBehaviour
 
         // ── 完全空闲快速退出：无瞄准/后坐/闪光/粒子/Tracer/命中圆环时，只做待机对齐 ──
         bool hasActive = _hasAim || _recoilKicking || _recoilT < 1f || _flashT > 0f
-                         || _tracerT > 0f || _particlesFired
-                         || (_hitRing != null && _hitRing.gameObject.activeSelf);
+                         || _activeTracers.Count > 0 || _particlesFired
+                         || _activeHitRings.Count > 0;
         if (!hasActive)
         {
             _recoilT = 1f;
@@ -508,47 +599,55 @@ public class TowerVisualController : MonoBehaviour
             if (_flashT <= 0f) { _flashT = 0f; _flashLight.gameObject.SetActive(false); }
         }
 
-        // Tracer 淡出（保持不变）
-        if (_tracerT > 0f && _tracer != null)
+        // Tracer 淡出：遍历活跃弹道，各弹道独立计时（加特林多弹道各自淡出）
+        for (int i = _activeTracers.Count - 1; i >= 0; i--)
         {
-            _tracerT -= Time.deltaTime / _tracerDur;
-            float a = Mathf.Clamp01(_tracerT);
-            _tracer.startColor = new Color(_tracerColor.r, _tracerColor.g, _tracerColor.b, a);
-            _tracer.endColor = new Color(_tracerColor.r, _tracerColor.g, _tracerColor.b, a * 0.25f);
-            if (_tracerT <= 0f) { _tracer.gameObject.SetActive(false); _tracerT = 0f; }
+            var fx = _activeTracers[i];
+            fx.t -= Time.deltaTime / fx.dur;
+            float a = Mathf.Clamp01(fx.t);
+            fx.lr.startColor = new Color(fx.color.r, fx.color.g, fx.color.b, a);
+            fx.lr.endColor = new Color(fx.color.r, fx.color.g, fx.color.b, a * 0.25f);
+            if (fx.t <= 0f)
+            {
+                fx.lr.gameObject.SetActive(false);
+                _tracerPool.Add(fx.lr);
+                _activeTracers.RemoveAt(i);
+            }
         }
 
-        // 命中圆环三阶段：快速淡入 → 保持较亮 → 扩大并平滑淡出
-        if (_hitRing != null && _hitRing.gameObject.activeSelf)
+        // 命中圆环三阶段：快速淡入 → 保持较亮 → 扩大并平滑淡出（多落点各自推进）
+        for (int i = _activeHitRings.Count - 1; i >= 0; i--)
         {
-            _hitT += Time.deltaTime;
+            var fx = _activeHitRings[i];
+            fx.t += Time.deltaTime;
             float holdEnd = HIT_FADE_IN + HIT_HOLD;
             float expandDur = Mathf.Max(0.01f, hitRingDuration - holdEnd);
             float alpha, scale;
-            if (_hitT < HIT_FADE_IN)
+            if (fx.t < HIT_FADE_IN)
             {
-                float p = _hitT / HIT_FADE_IN;
+                float p = fx.t / HIT_FADE_IN;
                 alpha = p;
                 scale = 0.25f;
             }
-            else if (_hitT < holdEnd)
+            else if (fx.t < holdEnd)
             {
-                float p = (_hitT - HIT_FADE_IN) / HIT_HOLD;
+                float p = (fx.t - HIT_FADE_IN) / HIT_HOLD;
                 alpha = 1f;
                 scale = Mathf.Lerp(0.25f, 0.4f, Smooth01(p));
             }
             else
             {
-                float p = Mathf.Clamp01((_hitT - holdEnd) / expandDur);
+                float p = Mathf.Clamp01((fx.t - holdEnd) / expandDur);
                 alpha = 1f - Smooth01(p);
                 scale = Mathf.Lerp(0.4f, 0.7f, Smooth01(p));
             }
-            _hitRing.localScale = new Vector3(scale, scale, 1f);
-            _hitRingRend.sharedMaterial.color = new Color(1f, 1f, 1f, alpha);
-            if (_hitT >= hitRingDuration)
+            fx.tr.localScale = new Vector3(scale, scale, 1f);
+            if (fx.rend != null) fx.rend.sharedMaterial.color = new Color(1f, 1f, 1f, alpha);
+            if (fx.t >= hitRingDuration)
             {
-                _hitRing.gameObject.SetActive(false);
-                _hitT = 0f;
+                fx.tr.gameObject.SetActive(false);
+                _hitRingPool.Add(fx.tr);
+                _activeHitRings.RemoveAt(i);
             }
         }
     }
@@ -556,8 +655,20 @@ public class TowerVisualController : MonoBehaviour
     /// <summary>塔被销毁时清理 Tracer/命中闪光等根级对象（它们不随塔节点销毁）。</summary>
     void OnDestroy()
     {
-        if (_tracer != null) Object.Destroy(_tracer.gameObject);
-        if (_hitRing != null) Object.Destroy(_hitRing.gameObject);
+        for (int i = _activeTracers.Count - 1; i >= 0; i--)
+        {
+            if (_activeTracers[i].lr != null) Object.Destroy(_activeTracers[i].lr.gameObject);
+            _activeTracers.RemoveAt(i);
+        }
+        foreach (var lr in _tracerPool) if (lr != null) Object.Destroy(lr.gameObject);
+        _tracerPool.Clear();
+        for (int i = _activeHitRings.Count - 1; i >= 0; i--)
+        {
+            if (_activeHitRings[i].tr != null) Object.Destroy(_activeHitRings[i].tr.gameObject);
+            _activeHitRings.RemoveAt(i);
+        }
+        foreach (var rt in _hitRingPool) if (rt != null) Object.Destroy(rt.gameObject);
+        _hitRingPool.Clear();
         if (_flashLight != null) Object.Destroy(_flashLight.gameObject);
     }
 }

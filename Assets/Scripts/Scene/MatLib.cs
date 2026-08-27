@@ -33,7 +33,9 @@ public static class MatLib
         var key = new Color(Mathf.Round(c.r * 255f) / 255f, Mathf.Round(c.g * 255f) / 255f,
                             Mathf.Round(c.b * 255f) / 255f, Mathf.Round(c.a * 255f) / 255f);
         Material m;
-        if (_pool.TryGetValue(key, out m)) return m;
+        // 跨 Play 会话：编辑器退出 Play 会销毁运行期 new 出来的材质，静态缓存可能残留"已销毁"引用（Unity 假 null）。
+        // 若命中失效材质直接重建，避免 Tracer/圆环拿到 null 材质不可见。
+        if (_pool.TryGetValue(key, out m) && m != null) return m;
         m = new Material(Shader2D) { color = key };
         _pool[key] = m;
         return m;
