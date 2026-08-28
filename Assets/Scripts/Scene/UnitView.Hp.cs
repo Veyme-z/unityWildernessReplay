@@ -53,28 +53,6 @@ public partial class UnitView
 
     static Material s_hpFillMat;
 
-    Transform _hpText;      // 血条上方血量数值（3D 文本）
-    TextMesh _hpTextMesh;
-
-    /// <summary>创建血条上方的血量数值（3D 文本，面朝相机）。</summary>
-    void EnsureHpText()
-    {
-        if (_hpText != null) return;
-        var go = new GameObject("HpText");
-        go.transform.SetParent(transform, false);
-        _hpText = go.transform;
-        _hpTextMesh = go.AddComponent<TextMesh>();
-        _hpTextMesh.font = UiFonts.Get();
-        _hpTextMesh.fontSize = 120;
-        _hpTextMesh.characterSize = 0.06f;
-        _hpTextMesh.anchor = TextAnchor.MiddleCenter;
-        _hpTextMesh.alignment = TextAlignment.Center;
-        _hpTextMesh.color = Color.white;
-        _hpTextMesh.text = "";
-        go.AddComponent<Billboard>();
-        _hpText.localPosition = new Vector3(0, _hpY + 0.12f, 0);
-    }
-
     /// <summary>估算 GameObject 的包围盒高度</summary>
     float EstimateHeight(GameObject go)
     {
@@ -173,9 +151,6 @@ public partial class UnitView
         if (_hpFillRend == null) _hpFillRend = _hpFill.GetComponent<MeshRenderer>();
         if (_hpFillRend != null) { _hpFillRend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; _hpFillRend.receiveShadows = false; }
         if (_mpb == null) _mpb = new MaterialPropertyBlock();
-
-        // 血量数值文本
-        EnsureHpText();
     }
 
     void EnsureRing()

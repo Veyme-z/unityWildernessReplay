@@ -135,12 +135,15 @@ public static class FxFactory
     const string RES_BUILD = "FX/Hovl Build Dust";             // 修筑建筑（Hovl Studio 尘土）
     const string RES_DEMOLISH = "FX/Hovl Demolish Explosion";  // 拆除建筑（Hovl Studio 爆炸）
     const string RES_RUBBLE = "FX/Hovl Rubble";                // 围墙摧毁（瓦砾炸开）
+    const string RES_ELECTRIC = "FX/CFXR Electrified 3";       // 电磁炮电流击中（CFXR 电击，循环播放/定时销毁）
 
     // 3×3 覆盖：1 格 = 1 世界单位，3×3 = 3 单位。
     // 炸弹范围缩小为原来的 1/2（1.8 → 0.9）。
     const float BOMB_SCALE = 0.9f;
     const float DIZZY_SCALE = 0.4f;
     const float BOMB_DURATION = 2.5f;   // 粒子播完后自动销毁
+    const float ELECTRIC_SCALE = 0.15f; // 电磁炮电流：CFXR 原生约 13 世界单位，缩到 ~2 覆盖机器人
+    const float ELECTRIC_DURATION = 1.6f; // 循环效果，播 1.6s 后销毁
     const float HEAL_SCALE = 0.6f;
     const float BUILD_SCALE = 0.3f;
     const float BUILD_ALPHA = 0.5f;   // 尘土透明度系数（乘到粒子 startColor.alpha）
@@ -155,6 +158,12 @@ public static class FxFactory
     public static void PlayBombEffect(Vector3 center)
     {
         SpawnEffect(RES_BOMB, center, BOMB_SCALE, BOMB_DURATION);
+    }
+
+    /// <summary>电磁炮电流击中：CFXR Electrified 3 电击效果，在落点（机器人）播放并定时销毁。</summary>
+    public static void PlayElectricHit(Vector3 pos, float scale = ELECTRIC_SCALE)
+    {
+        SpawnEffect(RES_ELECTRIC, pos, scale, ELECTRIC_DURATION);
     }
 
     /// <summary>眩晕 AoE：实例化 Resources/FX 下的 CFXR 魔法阵 prefab，放大覆盖 3×3，持续 durationSeconds 后自动回收。</summary>

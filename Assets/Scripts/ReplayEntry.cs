@@ -65,7 +65,28 @@ public class ReplayEntry : MonoBehaviour
         string text = null;
         string srcName = null;
 
-        if (debugReplay != null)
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // === [新增] WebGL：支持 ?replay=URL 从远程加载回放 ===
+        // 有参数时优先远程，失败不静默回退到本地（避免拿旧回放冒充成功）；
+        // 无参数时走下方原有本地加载逻辑。
+        string remoteUrl = GetReplayUrlFromQuery();
+        if (!string.IsNullOrEmpty(remoteUrl))
+        {
+            yield return LoadRemoteText(remoteUrl, got =>
+            {
+                text = got;
+                srcName = "?replay=" + remoteUrl;
+            });
+            if (string.IsNullOrEmpty(text))
+            {
+                Debug.LogError("[ReplayEntry] 远程回放加载失败：?replay=" + remoteUrl
+                    + "。请确认该地址可访问（HTTP 200、非空）；跨源时服务器需带 Access-Control-Allow-Origin 头。");
+                yield break;
+            }
+        }
+#endif
+
+        if (text == null && debugReplay != null)
         {
             text = debugReplay.text;
             srcName = "debugReplay";
@@ -222,6 +243,87 @@ public class ReplayEntry : MonoBehaviour
         catch (System.Exception e)
         {
             Debug.LogException(e);
+        }
+    }
+
+    /// <summary>
+    /// WebGL：从当前页面 URL 查询参数 ?replay= 读取回放地址。
+    /// 支持 http(s):// 绝对地址，也支持相对路径（相对当前页面解析）。
+    /// </summary>
+    static string GetReplayUrlFromQuery()
+    {
+        string path = QueryValue(Application.absoluteURL, "replay");
+        if (string.IsNullOrEmpty(path)) return null;
+        if (path.StartsWith("http://", System.StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("https://", System.StringComparison.OrdinalIgnoreCase))
+            return path;
+        System.Uri baseUri;
+        if (System.Uri.TryCreate(Application.absoluteURL, System.UriKind.Absolute, out baseUri))
+            return new System.Uri(baseUri, path).ToString();
+        return path;
+    }
+
+    /// <summary>
+    /// 解析 URL 查询参数。
+    /// </summary>
+    static string QueryValue(string url, string key)
+    {
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(key)) return null;
+        int queryIndex = url.IndexOf('?');
+        if (queryIndex < 0 || queryIndex == url.Length - 1) return null;
+        string query = url.Substring(queryIndex + 1);
+        int hashIndex = query.IndexOf('#');
+        if (hashIndex >= 0) query = query.Substring(0, hashIndex);
+
+        string[] pairs = query.Split('&');
+        foreach (string pair in pairs)
+        {
+            int equalIndex = pair.IndexOf('=');
+            if (equalIndex <= 0) continue;
+            string pairKey = System.Uri.UnescapeDataString(pair.Substring(0, equalIndex));
+            if (!string.Equals(pairKey, key, System.StringComparison.OrdinalIgnoreCase)) continue;
+            return System.Uri.UnescapeDataString(pair.Substring(equalIndex + 1));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// WebGL：从远程 URL 拉取回放文本。带超时 + 缓存破坏参数（防浏览器缓存旧回放）。
+    /// 同步部分（构造 + 发起）包 try/catch，失败仅记日志（onGot 不回调）。
+    /// </summary>
+    IEnumerator LoadRemoteText(string url, System.Action<string> onGot)
+    {
+        string sep = url.Contains("?") ? "&" : "?";
+        string requestUrl = url + sep + "t=" + System.DateTime.UtcNow.Ticks;
+
+        UnityWebRequest req = null;
+        UnityWebRequestAsyncOperation op = null;
+        try
+        {
+            req = UnityWebRequest.Get(requestUrl);
+            req.timeout = 60;
+            op = req.SendWebRequest();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogException(ex);
+            if (req != null) req.Dispose();
+            yield break;
+        }
+
+        yield return op;
+
+        using (req)
+        {
+            if (req.result == UnityWebRequest.Result.Success && !string.IsNullOrEmpty(req.downloadHandler.text))
+            {
+                onGot(req.downloadHandler.text);
+            }
+            else
+            {
+                Debug.LogError("[ReplayEntry] 远程回放读取失败: " + url
+                    + " error=" + req.error + " code=" + req.responseCode);
+            }
         }
     }
 

@@ -4,6 +4,8 @@
 [Oo]bj/
 [Bb]uild/
 [Bb]uilds/
+# --- WildernessReplay WebGL 构建产物（Tools → WildernessReplay → Build WebGL 的输出，勿提交） ---
+/Builds/WildernessReplay_WebGL_*/
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
 [Mm]emoryCaptures/

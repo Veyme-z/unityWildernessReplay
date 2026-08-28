@@ -260,9 +260,10 @@ public class TowerVisualController : MonoBehaviour
 
         if (_towerType == "Flamethrower") return;          // 火箭发射台：无弹道（爆炸特效由 ReplayPlayer 播放）
 
-        if (_towerType == "RPG")                           // 电磁狙击炮：无弹道轨迹，只枪口闪光 + 落点命中环
+        if (_towerType == "RPG")                           // 电磁狙击炮：枪口闪光 + 落点电流电击（CFXR Electrified）
         {
             SpawnHitRing(primary);
+            FxFactory.PlayElectricHit(primary);
             return;
         }
 

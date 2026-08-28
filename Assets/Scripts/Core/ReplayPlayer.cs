@@ -622,17 +622,24 @@ void OnRoundEntered(int n)
         string p0Result, p1Result;
         int p0Score, p1Score;
 
-        // 结果取判题器 finish（按 teamId 对齐，避免列表顺序把红蓝搞反）；无 finish 时按基地血量推断
+        // 结果 + 最终积分取判题器 finish（finish.totalScore = 最后一轮累计 + 生存天数加分等，按 teamId 对齐）；
+        // 无 finish 时按基地血量推断结果、用引擎最后一轮积分兜底
         var f = data.finish;
         var resultById = new Dictionary<string, string>();
+        var scoreById = new Dictionary<string, int>();
         if (f != null && f.players != null)
             foreach (var pr in f.players)
+            {
                 resultById[pr.teamId] = pr.result;
+                scoreById[pr.teamId] = pr.totalScore;
+            }
 
         if (resultById.ContainsKey(red.teamId) && resultById.ContainsKey(blue.teamId))
         {
             p0Result = resultById[red.teamId];
             p1Result = resultById[blue.teamId];
+            p0Score  = scoreById[red.teamId];
+            p1Score  = scoreById[blue.teamId];
         }
         else
         {
@@ -645,15 +652,40 @@ void OnRoundEntered(int n)
             }
             p0Result = redHp <= 0 ? "defeat" : (blueHp <= 0 ? "victory" : "draw");
             p1Result = blueHp <= 0 ? "defeat" : (redHp <= 0 ? "victory" : "draw");
+            p0Score = red.score;
+            p1Score = blue.score;
         }
 
-        // 积分取最后一轮的引擎数据（与回放过程显示一致；判题器 finish.totalScore 是含末尾加分（任务/击杀/生存）的最终值，不在此处展示）
-        p0Score = red.score;
-        p1Score = blue.score;
+        // 存活天数：基地被毁回合所在天 - 1（基地始终存活则按最后一轮天 - 1）
+        int p0Days = SurvivalDays(red.teamId);
+        int p1Days = SurvivalDays(blue.teamId);
 
         var ctrl = SettlementPanelController.Create(
-            p0Name, p0Result, p0Score, p1Name, p1Result, p1Score,
+            p0Name, p0Result, p0Score, p0Days,
+            p1Name, p1Result, p1Score, p1Days,
             () => { Destroy(_settlementOverlay); _settlementOverlay = null; Restart(); });
         if (ctrl != null) _settlementOverlay = ctrl.gameObject;
+    }
+
+    /// <summary>队伍存活天数：基地首次 hp≤0 的回合所在天 - 1；基地始终存活则按最后一轮天 - 1。</summary>
+    int SurvivalDays(string teamId)
+    {
+        if (data == null || data.rounds == null || data.rounds.Count == 0) return 0;
+        int lastDay = StateEngine.DayOf(data.rounds[data.rounds.Count - 1].round);
+        int destroyRound = -1;
+        foreach (var rd in data.rounds)
+        {
+            bool found = false;
+            foreach (var t in rd.teams)
+            {
+                if (t.teamId != teamId) continue;
+                foreach (var r in t.roles)
+                    if (r.roleType == 4 && r.health <= 0) { destroyRound = rd.round; found = true; break; }
+                if (found) break;
+            }
+            if (found) break;
+        }
+        if (destroyRound >= 0) return StateEngine.DayOf(destroyRound) - 1;
+        return lastDay - 1;
     }
 }

@@ -388,6 +388,9 @@ public static class SceneBuilder
             // 纯数据驱动回放：NPC 是静态单位装饰，销毁物理组件（碰撞体/刚体）关闭物理引擎开销
             foreach (var col in go.GetComponentsInChildren<Collider>(true)) Object.Destroy(col);
             foreach (var rb in go.GetComponentsInChildren<Rigidbody>(true)) Object.Destroy(rb);
+            // 静态 NPC 不掉血：销毁 prefab 自带的白色血条（HpFill/HpBar），避免头顶浮白色块
+            foreach (var hp in go.GetComponentsInChildren<Transform>(true))
+                if (hp.name == "HpFill" || hp.name == "HpBar") Object.Destroy(hp.gameObject);
             go.transform.position = c + new Vector3(0, 0.01f, 0);
             if (t == 8) go.transform.rotation = Quaternion.Euler(0f, 135f, 0f);
             else if (t == 9) go.transform.rotation = Quaternion.Euler(0f, -45f, 0f);

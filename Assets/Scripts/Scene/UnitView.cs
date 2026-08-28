@@ -352,9 +352,6 @@ public partial class UnitView : MonoBehaviour
         // 血条颜色按阵营恒定（机器人黄、红方红、蓝方蓝、中立绿）
         _mpb.SetColor("_Color", GetHpColor());
         _hpFillRend.SetPropertyBlock(_mpb);
-        // 血量数值（每回合随 replay 的 health 字段变化）
-        if (_hpTextMesh != null)
-            _hpTextMesh.text = hp > 0 ? hp + "/" + maxHp : "";
     }
 
     public void SetStun(bool stun)
