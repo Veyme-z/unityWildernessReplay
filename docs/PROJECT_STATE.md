@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-24
+> **最后更新**：2026-08-31
 ---
 
 ## 一、项目是什么
@@ -41,7 +41,7 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 | `Scene/ReplayCameraRig.cs` | 相机系统：1/2/3/4 快捷机位 (Global/TeamA/TeamB/Free)；Free 模式左键平移+右键旋转+滚轮锚点缩放 |
 | `Scene/CameraManager.cs` | 自动导播：SmoothDamp + 事件特写 + 震屏 |
 | `FX/TradeBadge.cs` | 交易/使用徽标：World Space Billboard + 弹出淡出；Vendor/Shop 独立参数；角色使用道具 `ShowUse`（「使用 xx」）；背景框按全宽/半宽自适应 |
-| `FX/TaskCardBadge.cs` + `FX/TaskBadgeManager.cs` | **开拓者任务卡片**：程序化 Quad 底板 + TextMesh 文字，4 态 Intro/Working/Success/Fail，结果视频**从头播一遍再淡出销毁**；暂停冻结动画计时 + 视频同步；Billboard 面向相机；共享 Sprites/Default 材质 + MPB 改色（GPU Instancing）；**渲染层**：Intro=task.png 图片（MPB `_MainTex`、`_Color` 白不 tint、不叠文字、至少 2 回合）；Working=**TaskBadgeManager 全局共享 working 视频 RT**（游戏开始即就绪循环，Working 起始帧即显示，无中间加载态）；Success/Fail=**卡片自有 slot**（Awake 后台 Prepare success/fail，`isLooping=false` + `time=0` 从头播一遍，`_resultDuration=视频时长` 播完淡出；不用共享循环 RT 是因为共享播放器 time=0 seek 延迟生效会先显示旧位置画面）；**CARD_SCALE=4（卡片 2 倍放大）**；**金黄描边**（BORDER=0.05 稍大 Quad 垫底，`ApplyAlpha` 淡入淡出时随背景同步）；`_mpb.Clear()` 清纹理 + 立即补回 `_Color` 防暂停全透明；视频失败降级纯色+文字；**WebGL**：URL 用 `TaskCardBadge.VideoUrl()`（相对正斜杠、勿 Path.Combine）、`audioOutputMode=None`（静音放行 autoplay）、`isPrepared` 轮询兜底、**视频必须是 H.264（avc1）**（mp4v 浏览器不认） |
+| `FX/TaskCardBadge.cs` + `FX/TaskBadgeManager.cs` | **开拓者任务卡片**：程序化 Quad 底板 + TextMesh 文字，4 态 Intro/Working/Success/Fail，**仅 Working 是视频，其余状态是静态图片（各展示 2 回合）**；暂停冻结动画计时 + 视频同步；Billboard 面向相机；共享 Sprites/Default 材质 + MPB 改色（GPU Instancing）；**渲染层**：Intro=**claim.png**（Resources/Sprites，至少 2 回合）；Working=**TaskBadgeManager 全局共享 working 视频 RT**（游戏开始即就绪循环，Working 起始帧即显示，无中间加载态）；Success/Fail=**unlock_success.png / unlock_fail.png 静态图**（Resources 同步加载，`_resultStartCur` 记录进入回合，`cur-start>=2` 后淡出销毁，round-based 速度无关）；**CARD_SCALE=4（卡片 2 倍放大）**；**金黄描边**（BORDER=0.05 稍大 Quad 垫底，`ApplyAlpha` 淡入淡出时随背景同步）；`_mpb.Clear()` 清纹理 + 立即补回 `_Color` 防暂停全透明；资源加载失败降级纯色+文字（working 蓝「破解中」/ Success 绿「✓ 通过」/ Fail 红「× 失败」）；**性能**：共享 working 仅在"有卡在 Intro（预卷）或 Working"时播放，空闲暂停省解码（WebGL 并发解码是卡顿源）；**WebGL**：URL 用 `TaskCardBadge.VideoUrl()`（相对正斜杠、勿 Path.Combine）、`audioOutputMode=None`（静音放行 autoplay）、`isPrepared` 轮询兜底、**视频必须是 H.264（avc1）**（mp4v 浏览器不认） |
 | `FX/TaskBadgeManager.cs` | 任务卡片全局管理器（挂在 ReplayEntry）：每帧从 `rounds[cur-1].teams[].task` 读快照、与 `rounds[cur-2]`（数据上一回合）做跳变检测判定状态（成功/失败）；拖动进度条/Seek 时**先全清再按目标回合数据重建**（杜绝「开拓者站着却残留失败框」）；血条上方 +0.5 净空、整体 2× 放大（世界坐标定位不受父节点缩放影响）；Awake 多实例自毁 + 创建前查父节点已有卡复用（防叠卡） |
 
 ### UI
@@ -94,6 +94,15 @@ Resources/Prefabs/Buildings/
 └── WeaponShop.prefab # type 10 — building_barracks_yellow.fbx
 ```
 
+### 任务点（2026-08-31）
+```
+Resources/Prefabs/
+├── K151ArmoredVehicle.prefab  # 韩军 K151 轻装甲车（木林迷彩，未来任务点）
+└── GoldChest.prefab           # 金色宝箱（未来任务点）
+```
+- 均为包装 Prefab（根节点 + `Model` 子节点）。适配详情见 [资源问题与解决方案.md](资源问题与解决方案.md)。
+- **摆放**（`SceneBuilder.BuildMissionPoint`）：地图 tile 40/42 → 宝箱、41/43 → 装甲车，位置 = 格子中心世界坐标（game 坐标 (14,14)(23,14) 宝箱、(17,17)(26,17) 装甲车）。装甲车 `VEHICLE_SCALE=0.27`（约 0.74×1.44m，车头+Z），用 `LookRotation` 使车头朝小贩(tile 9)。当前 replay.txt 已含这 4 个 marker tile。
+
 ### 防御塔（Cube Tower Defense，已转 Built-in）
 - **源素材**（URP 专用，勿改）：`Assets/CubeTowerDefense/`
 - **已转换 prefab**（源塔）：`Assets/ProjectAssets/CubeTowerDefense_BuiltIn/Resources/Prefabs/Towers/`
@@ -104,7 +113,7 @@ Resources/Prefabs/Buildings/
   ```
   材质在 `.../Materials/`（Standard）、粒子在 `.../Effects/`（Particles/Standard Unlit）。
 - **视觉包装 Prefab**（运行时真正加载、可编辑）：`Resources/Prefabs/Buildings/CubeTowers/Tower_{Type}_{Faction}.prefab`（6 个），嵌套引用上述源塔（不复制 FBX/贴图），根上挂 `TowerVisualController`。**运行时统一加载 `Tower_Minigun_{Faction}`**（红方 `Tower_Minigun_Red` / 蓝方 `Tower_Minigun_Blue`），Flamethrower/RPG 包装 Prefab 保留但不再加载。旧塔备份在 `Legacy/Tower_Legacy.prefab`。
-- **节点结构**：根 → `BasePillar`(静态底座) + `Minigun`(可旋转炮塔节点)；正前方 = 局部 +Z。Minigun 有 `Muzzle` 节点（内含 8 个 `Particle System` + `Shooting` 粒子），但该节点默认 **禁用**（见「已知大坑」Minigun Muzzle 节点默认禁用）。
+- **节点结构**：根 → `BasePillar`(静态底座) + `Minigun`(可旋转炮塔节点)；正前方 = 局部 +Z。Minigun 有 `Muzzle` 节点（内含 8 个 `Particle System` + `Shooting` 粒子），但该节点默认 **禁用**（见 [资源问题与解决方案.md](资源问题与解决方案.md) 第六节）。
 
 ### 环境
 ```
@@ -169,7 +178,7 @@ Create(state, parent)
 - **碎草散布**：33% 概率，scale 0.15~0.3，KayKit Grass_1/2 FBX
 - **水面跳过**：碎草和树灌不在水域生成
 - **矿石**：ResourceViewManager 运行时生成 Sphere + Mat_Ore_XX.mat，Y-only 旋转
-- **场景合批**：`StaticBatchAll`（BuildForestSkirt/BuildPerimeterFence/草地网格末尾调用）用 `Mesh.CombineMeshes` 手动合批——**不能用 `StaticBatchingUtility.Combine`**（本环境实测无论 mesh 是否可读、物体是否 isStatic 均不产生合并网格，静默 no-op，见「已知大坑」）。做法：按材质分组 → 每组 `CombineInstance[]`（mesh + `localToWorldMatrix`）→ `CombineMeshes(comb, true, true)`（**useMatrices 必须 true**，false 时所有顶点塌缩到局部原点堆在地图中心）→ 挂 root 下合成网格 + 材质 → 禁用原物体（容器直接 `SetActive(false)`）。单组按 60k 顶点预算分块（围栏 170 段×600 顶点≈102k 必须分块）。FBX 需开 Read/Write（11 个 meta `isReadable:1`）
+- **场景合批**：`StaticBatchAll`（BuildForestSkirt/BuildPerimeterFence/草地网格末尾调用）用 `Mesh.CombineMeshes` 手动合批——**不能用 `StaticBatchingUtility.Combine`**（本环境实测无论 mesh 是否可读、物体是否 isStatic 均不产生合并网格，静默 no-op，见 [资源问题与解决方案.md](资源问题与解决方案.md) 第三节）。做法：按材质分组 → 每组 `CombineInstance[]`（mesh + `localToWorldMatrix`）→ `CombineMeshes(comb, true, true)`（**useMatrices 必须 true**，false 时所有顶点塌缩到局部原点堆在地图中心）→ 挂 root 下合成网格 + 材质 → 禁用原物体（容器直接 `SetActive(false)`）。单组按 60k 顶点预算分块（围栏 170 段×600 顶点≈102k 必须分块）。FBX 需开 Read/Write（11 个 meta `isReadable:1`）
 
 ### UnitView 拆分（2026-08-20，Partial Class）
 - `UnitView.cs` 原 818 行上帝类 → 拆为 `UnitView.cs`(341) + 4 个 partial：`UnitView.Anim.cs`(172 动画) / `UnitView.Hp.cs`(172 血条) / `UnitView.Lod.cs`(119 距离LOD) / `UnitView.Tower.cs`(58 塔视觉)。
@@ -333,25 +342,15 @@ Create(state, parent)
 
 | 坑 | 说明 |
 |----|------|
-| **KayKit FBX scale=100** | 所有 KayKit FBX 根节点 scale=(100,100,100)，rotation=(270,0,0)。实例化后不能覆盖 localScale，要用容器包裹。Devilswork 无此问题(scale=1) |
-| **FBX Prefab 序列化失败** | `execute_code` + `SaveAsPrefabAsset` 无法正确保存 FBX 子节点 mesh。简单模型用 Primitive (Cube/Sphere)，复杂模型通过 AssetDatabase 直接 Instantiate |
 | **AssetDatabase 仅 Editor** | `LoadAsset<T>` 有 `#if UNITY_EDITOR` + Resources.Load 双回退。Build 需要 Resources/Prefabs/Environment/Forest/ 下的包装 Prefab |
-| **loopTime 持久化** | 必须 SerializedObject → m_ClipAnimations → ApplyModifiedPropertiesWithoutUndo → SaveAndReimport |
-| **Sprites/Default vs Standard** | MatLib 用 Sprites/Default（2D），血条必须用 Standard（3D+MPB 变色） |
 | **红蓝阵营色反了** | defender 显红色模型，challenger 显蓝色模型 |
 | **Mathf.SmoothStep ≠ HLSL smoothstep** | C# `Mathf.SmoothStep(from,to,t)` 是插值函数（以 t 为 0~1 因子在 from/to 间插值），不是 HLSL `smoothstep(edge0,edge1,x)` 的 0~1 阶跃。圆环遮罩和昼夜 Blend 必须用自定义 `Smooth01`（基于 `Clamp01` + Hermite 曲线），见 `MatLib.Smooth01()` 和 `DayNightController.Smooth01()` |
 | **昼夜 130 回合/天** | `StateEngine.DayOf(n)` / `IsNight(n)` 硬编码 130 回合周期（80 白天 + 50 夜晚）。`DayNightController` 通过 `ReplayPlayer.RoundFloat`（连续浮点值）计算 `cyclePosition = Mathf.Repeat(roundFloat, 130f)`，黄昏 72-80、黎明 122-130 |
-| **NPC T-Pose：Animator Controller 缺失** | OfficerNPC/VendorNPC Prefab 的 Animator 虽有有效 Avatar，但 `m_Controller: {fileID: 0}`。Humanoid 模型 + 无 Controller = bind pose（双手张开）。赋 Adventurer_AnimatorController 即可复用 KayKit Idle_A。SCENE BUILDER 静态 NPC 不会走 UnitView.ConfigureFromUnitPrefab，必须在 BuildNeutralNpc 中单独添加组件 |
-| **Robot Controller 零参数** | 所有 Robot 素材包的 `.controller` 都是 `m_AnimatorParameters: []`，纯 ExitTime 链式过渡，外部无法控制。必须用 `AnimatorOverrideController(Skeleton_AnimatorController)` 替换，按名称模糊匹配 Idle/Walk/Attack/Death clip。Boxy/Tanker 缺少 Die 状态，Metal Robot 最完整 |
-| **野兽登场"幽灵白圈"两个来源** | ① 资产级：Beast_11 底层 `Bot Robot.prefab` 的 `FX Hex` 粒子（playOnAwake 白圈，2026-08-19 已从资产删除）；② 代码级：`ReplayPlayer.OnSpawn` 的 `FxFactory.Ring` 出生光环（已对野兽 11-14 屏蔽，其余单位保留）。根治在资产源头，UnitView 无运行时补救代码。若未来换新 Robot 模型，需同样在 Prefab 里删掉 playOnAwake 入场粒子 + 关阴影 | 
-| **Robot Prefab 不在 Resources 下** | `Resources.Load` 无法加载。必须通过 Nested Prefab 引用（拖入 Beast Prefab 内部）或 PrefabRefs 序列化字段。不要用 `AssetDatabase.LoadAssetAtPath`（仅 Editor 可用，Build 失效） |
-| **Minigun 源塔 Muzzle 节点默认禁用** | Cube Tower Defense 源 prefab 里 Minigun 的 `Muzzle` 节点 `activeSelf=false`（原游戏脚本负责开火时激活）。若直接 `Play()` 粒子，`isPlaying` 永远 false。`TowerVisualController.Setup()` 里已先设 `playOnAwake=false` 再 `_muzzlePoint.SetActive(true)` |
-| **ParticleSystemRenderer 撑大包围盒** | 粒子拖尾/射击流会把 `GetComponentsInChildren<Renderer>().bounds` 撑到 9+ 单位，导致血条过宽过高。测模型尺寸必须跳过 `ParticleSystemRenderer`（`TowerVisualController.MeasureSize()` 已处理） |
 | **MainModule 是结构体** | `var m = ps.main; m.playOnAwake = false;` 这种写法有效（MainModule 属性 setter 直写原生对象），但不要对 `ps.main` 整体赋值 |
-| **StaticBatchingUtility.Combine 在本项目无效** | 2022.3 本工程实测：无论 mesh 是否 `isReadable`、物体是否 `isStatic`、单参/双参重载，调用后 root 都不产生合并网格（子物体照常独立渲染，console 无任何报错，静默 no-op）。场景合批必须用 `Mesh.CombineMeshes` 手动合批（见「性能优化」）。且 `CombineMeshes` 的 `useMatrices` 必须传 `true`（false 会忽略 `CombineInstance.transform`，全部顶点塌缩到局部原点堆在地图中心——验证网格 `bounds` 即可发现） |
-| **legacy TextMesh + Dynamic 字体在 WebGL 隐形** | 世界空间 `TextMesh`（3D 文本，非 uGUI `Text`）赋 Dynamic 字体（NotoSansSC）后在 WebGL 两个坑：① 不主动请求字形 → **中文空白**（需 `font.RequestCharactersInTexture(text, fontSize, style)`）；② 不自动把 `MeshRenderer.sharedMaterial` 同步成 `font.material` → **整个文本隐形，连数字/英文都不显示**（需 `mr.sharedMaterial = font.material`）。uGUI `Text` 无此问题（内部订阅 `textureRebuilt`）。见 `UiFonts.PrewarmWorldText()` / `TradeBadge.SetText` |
 | **WebGL "Insecure connection not allowed"** | HTTP 页面下 `UnityWebRequest.Get(绝对 http://URL)` 抛 `InvalidOperationException`。`ReplayEntry.RelativeStreamingUrl()` 把 `Application.streamingAssetsPath` 归一化为「相对当前网页」路径（剥掉协议+host，协议跟随页面），`LoadWebText()` 同步段包 try/catch 兜底走 demo，异常不中断初始化 |
 | **`AudioSource.isPlaying` 在 `AudioListener.pause` 时恒 false** | 回放暂停（`AudioListener.pause=true`）时任何 `AudioSource.isPlaying` 都返回 false。`BgmController` 判断「要淡出的旧通道」**不能靠 `isPlaying`**（否则暂停拖时间轴 seek 时旧曲不淡出，恢复播放双曲叠加），必须按 `clip` 归属判定、结束无条件 `Stop()`。换/调 BGM 逻辑时注意 |
+
+> 资源 / 材质 / 模型 / 贴图 / 动画资源类坑已全部移至 [资源问题与解决方案.md](资源问题与解决方案.md)，此处只保留**代码/逻辑**类坑。
 
 ---
 
@@ -361,6 +360,8 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-08-31 | **任务卡片改"仅 Working 视频、其余静态图（各 2 回合）"**：新增 `Assets/Resources/Sprites/claim.png`（Intro 领取，1024²）、`unlock_success.png`（Success 解锁成功，2048×1024）、`unlock_fail.png`（Fail 解锁失败，2048×1024）——图片**从 StreamingAssets 移到 Resources**（`Resources.Load` 同步加载、WebGL 安全，避免异步加载中间态）；`FX/TaskCardBadge.cs`：Intro/Success/Fail 改 `LoadTex` 图片、`_shownUrl=null`，结果图 2 回合后淡出（`_resultStartCur` + `RESULT_ROUNDS=2`，round-based 速度无关）；删除 `BeginClaimVideo`/`BeginResultVideo` 及结果视频相关（`_resultDuration`/`_resultPreloadStarted`/SUCCESS/FAIL_VIDEO）。`FX/TaskBadgeManager.cs`：只建 working 一个共享播放器；共享 working 仅在"有卡在 Intro（预卷）或 Working"时播放、空闲暂停省解码。实测：Working=RenderTexture（视频）、Intro=claim、Success=unlock_success、Fail=unlock_fail；编译 0 error |
+| 2026-08-31 | **K151 装甲车 + 宝箱适配 Built-in 并放入 Resources**：新增 `Resources/Prefabs/K151ArmoredVehicle.prefab`、`GoldChest.prefab`（未来任务点，包装 prefab）。根因与完整解法见 [资源问题与解决方案.md](资源问题与解决方案.md) |
 | 2026-08-25 | **结果视频改为卡片自有播放器（从头播一遍再淡出）+ 卡片放大 2 倍**：① **Success/Fail 视频"前 ~1s 被播两遍"根因**：共享播放器一直在循环，`VideoPlayer.time=0` 的 seek 在播放中是**延迟生效**的（实测设 0 后立刻读回仍是旧值），卡片切到共享 RT 会先显示旧位置画面（若恰好靠近开头即"前 1s 播两遍"）。修复：`BeginResultVideo` 改用**卡片自己的 slot**——Awake 后台 `Prepare` success/fail，结果到来时 `isLooping=false`、`time=0`、从头播一遍，`_resultDuration=视频时长` 播完淡出销毁；`OnVideoLoop` 对结果视频不再重启（仅 working 循环）；Update 在结果播完（`_elapsed>=时长` 或视频到末尾）时不再续播。② 卡片 `CARD_SCALE` 2→4（底板 4×2.4、文字/描边/定位同步放大，用户反馈卡片小看不清视频）。实测：卡片底板 Bg.localScale=(4,2.4,1)；Fail 卡（r33 暂停）自有 fail 播放器 time=0 从头；编译 0 error |
 | 2026-08-24 | **任务卡片金黄描边随淡出一起消失**：`FX/TaskCardBadge.cs` 的 `ApplyAlpha` 原只淡背景底板+文字，**金黄描边（Border #FFD700）没跟着淡** → 结果视频淡出后金边残留 ~0.2s 的黄色卡片。新增 `_borderRend`/`_borderMpb` 字段（Awake 存描边渲染器+MPB），`ApplyAlpha(a)` 里同步设置描边 `_Color` 的 alpha（金黄 RGB + a）。实测 `ApplyAlpha(0.5)` 后 borderAlpha 与 bgAlpha 同为 0.50，淡入淡出三者一致 |
 | 2026-08-24 | **任务卡片视频改全局共享 + WebGL 视频不显示修复**：实测发现 working 视频"本地 Prepare 需 ~3-4s（播放期渲染负载下更慢），Intro/Working 阶段太短，Working 全程只显示 Intro 图再直接跳结果"；且 **WebGL 导出后视频全不显示（占位图）**（Editor 正常、URL 正斜杠且 GET 200/304）。修复：① `FX/TaskBadgeManager.cs` 建**全局共享播放器**——`EnsureSharedVideo(file)` 对 working/success/fail 各建隐藏 VideoPlayer，游戏开始即 `Prepare` + 循环播放进共享 RT（`GetSharedVideoRT`/`GetSharedVideoLength` 供卡片取用），`Update` 统一随回放暂停/播放冻结 + **`isPrepared` 轮询兜底建 RT/开播**（WebGL 上 prepareCompleted 可能不触发）；② `FX/TaskCardBadge.cs` `BeginWorkingVideo()`/`BeginResultVideo(url)` **优先显示共享 RT（立即可用无中间态）**，共享未就绪回退本地 slot（`SyncPreparedSlots` 也加 isPrepared 轮询）；`VideoUrl()` 改 `public static`；③ **WebGL 三关键**：**视频编码必须是 H.264（avc1）**——原视频是 `mp4v`（MPEG-4 Part 2）浏览器不支持，已用 Windows Media Foundation（PowerShell `_transcode.ps1`）转 H.264/AAC 并替换（原 mp4v 备份 `_task_videos_mp4v_backup/`，转后尺寸/时长不变：working 960×540 4s、success 1280×720 3.4s、fail 960×540 2.4s，Editor 实测全部 isPrepared+isPlaying+RT 非黑）；`audioOutputMode=None`（静音放行 autoplay）；`isPrepared` 轮询兜底。实测：Editor working 就绪从 ~4.4s 提前到共享 RT 即开即用（Working 起始帧即显示，r20 双卡 shown=working.mp4、MainTex=共享 RT）；本地 slot 保留为回退 |

@@ -160,10 +160,33 @@ public static class FxFactory
         SpawnEffect(RES_BOMB, center, BOMB_SCALE, BOMB_DURATION);
     }
 
-    /// <summary>电磁炮电流击中：CFXR Electrified 3 电击效果，在落点（机器人）播放并定时销毁。</summary>
-    public static void PlayElectricHit(Vector3 pos, float scale = ELECTRIC_SCALE)
+    /// <summary>电磁炮电流击中：CFXR Electrified 3 电击效果，在落点（机器人）播放并定时销毁；color 染 Glow（红=淡红/蓝=淡蓝）。</summary>
+    public static void PlayElectricHit(Vector3 pos, Color color, float scale = ELECTRIC_SCALE)
     {
-        SpawnEffect(RES_ELECTRIC, pos, scale, ELECTRIC_DURATION);
+        var inst = SpawnEffect(RES_ELECTRIC, pos, scale, ELECTRIC_DURATION);
+        TintElectricGlow(inst, color);
+    }
+
+    /// <summary>给 CFXR Electrified 3 实例的 Glow 粒子染色（保留 alpha），找不到 Glow 则忽略。</summary>
+    public static void TintElectricGlow(GameObject cfx, Color color)
+    {
+        if (cfx == null) return;
+        foreach (var ps in cfx.GetComponentsInChildren<ParticleSystem>(true))
+        {
+            if (ps.name != "Glow") continue;
+            var main = ps.main;
+            var sc = main.startColor;
+            var c = sc.color;
+            sc.color = new Color(color.r, color.g, color.b, c.a);
+            main.startColor = sc;
+            break;
+        }
+    }
+
+    /// <summary>电磁炮电流阵营色：红方淡红 / 蓝方保持 CFXR 默认淡蓝。</summary>
+    public static Color FactionElectricColor(string faction)
+    {
+        return faction == "Blue" ? new Color(0.338f, 0.618f, 0.981f) : new Color(1f, 0.6f, 0.6f);
     }
 
     /// <summary>眩晕 AoE：实例化 Resources/FX 下的 CFXR 魔法阵 prefab，放大覆盖 3×3，持续 durationSeconds 后自动回收。</summary>
@@ -236,14 +259,14 @@ public static class FxFactory
         ff.duration = 0.12f;
     }
 
-    /// <summary>统一从 Resources 加载 + 实例化 + 缩放 + 透明度 + 定时回收；follow 非空时挂到目标下跟随。</summary>
-    static void SpawnEffect(string resPath, Vector3 center, float scale, float duration, float alpha = 1f, Transform follow = null)
+    /// <summary>统一从 Resources 加载 + 实例化 + 缩放 + 透明度 + 定时回收；follow 非空时挂到目标下跟随。返回实例（供调用方染色等）。</summary>
+    static GameObject SpawnEffect(string resPath, Vector3 center, float scale, float duration, float alpha = 1f, Transform follow = null)
     {
         var prefab = Resources.Load<GameObject>(resPath);
         if (prefab == null)
         {
             Debug.LogWarning("[FxFactory] 特效 prefab 加载失败: " + resPath);
-            return;
+            return null;
         }
         var inst = Object.Instantiate(prefab, center, Quaternion.identity);
         if (follow != null)
@@ -266,6 +289,7 @@ public static class FxFactory
             }
         }
         Object.Destroy(inst, duration);
+        return inst;
     }
 }
 

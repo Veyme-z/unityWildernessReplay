@@ -89,7 +89,7 @@ public static class WildernessReplayWebGLBuilder
         if (summary.result == BuildResult.Succeeded)
         {
             PatchIndexHtml(outputDir);
-            WriteReadme(outputDir, scenes);
+            WriteReadme(outputDir);
             Debug.Log("[WildernessReplayWebGL] 构建成功，输出目录：" + Path.GetFullPath(outputDir));
         }
         else
@@ -157,7 +157,8 @@ public static class WildernessReplayWebGLBuilder
             "      .wilderness-loading-title { color: #e8edf7; font: 700 24px/1.3 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }\n" +
             "      .wilderness-loading-sub { margin-top: 8px; color: #8fa3c8; font: 500 13px/1.6 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }\n" +
             "      #unity-progress-bar-empty { width: 100%; height: 8px; margin-top: 22px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; overflow: hidden; }\n" +
-            "      #unity-progress-bar-full { height: 100%; background: linear-gradient(90deg, #1e6fd9, #38c8ff); border-radius: 999px; }\n" +
+            "      #unity-progress-bar-full { height: 100%; min-width: 4px; background: linear-gradient(90deg, #1e6fd9, #38c8ff); border-radius: 999px; background-image: linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%); background-size: 26px 26px; animation: wildernessStripes 0.9s linear infinite; transition: width 0.3s ease; }\n" +
+            "      @keyframes wildernessStripes { 0% { background-position: 0 0; } 100% { background-position: 26px 0; } }\n" +
             "    </style>\n" +
             "  </head>");
 
@@ -165,11 +166,20 @@ public static class WildernessReplayWebGLBuilder
         html = html.Replace("<div id=\"unity-logo\"></div>",
             "<div id=\"unity-logo\"></div>" +
             "<div class=\"wilderness-loading-title\">荒野回放</div>" +
-            "<div class=\"wilderness-loading-sub\">正在加载回放资源，请稍候…</div>");
+            "<div class=\"wilderness-loading-sub\" id=\"wilderness-progress-text\">正在加载回放资源… 0%</div>");
 
         // --- 画布铺满窗口 ---
         html = html.Replace("canvas.style.width = \"960px\";", "canvas.style.width = \"100vw\";");
         html = html.Replace("canvas.style.height = \"600px\";", "canvas.style.height = \"100vh\";");
+
+        // --- 加载进度：真实百分比 + 进度文字（Unity 的 progress 回调驱动） ---
+        // Unity 的 progress 回调只在下载 .data 时报告 0→100%；框架/wasm 阶段无回调，
+        // 所以保留已显示的百分比 + 条纹动画，保证任何阶段进度条都可见。
+        html = html.Replace(
+            "progressBarFull.style.width = 100 * progress + \"%\";",
+            "progressBarFull.style.width = Math.max(2, Math.round(progress * 100)) + \"%\";\n" +
+            "        var _wt = document.getElementById('wilderness-progress-text');\n" +
+            "        if (_wt) _wt.textContent = progress >= 1 ? '正在启动引擎…' : '正在加载回放资源… ' + Math.round(progress * 100) + '%';");
 
         // --- 资源 URL 加版本戳（防浏览器缓存旧包；模板片段匹配不上则整体跳过，避免 buildStamp 未定义） ---
         if (html.Contains("var loaderUrl = buildUrl +"))
@@ -188,7 +198,7 @@ public static class WildernessReplayWebGLBuilder
     }
 
     /// <summary>写一份使用说明到构建包。</summary>
-    static void WriteReadme(string outputDir, string[] scenes)
+    static void WriteReadme(string outputDir)
     {
         string text =
             "荒野回放 WebGL 构建包使用说明\n" +
@@ -199,13 +209,11 @@ public static class WildernessReplayWebGLBuilder
             "访问方式：\n" +
             "- 包内回放：http://服务器/（读 StreamingAssets/replay.txt）\n" +
             "- 远程回放：http://服务器/?replay=http://回放地址/replay.txt\n" +
-            "- 相对回放：http://服务器/?replay=/StreamingAssets/replay.txt\n" +
-            "- 本地测试：python -m http.server 3000，再访问 http://127.0.0.1:3000/\n\n" +
+            "- 相对回放：http://服务器/?replay=/StreamingAssets/replay.txt\n\n" +
             "回放加载不了时：\n" +
             "- 页面用域名打开、进度条卡住 → 浏览器缓存问题。先清该站点数据或换无痕；本包已关 dataCaching，重发新包后自然不再复发。\n" +
             "- 页面能开但回放不启动 → F12 Console 看 CORS 报错（Access-Control-Allow-Origin），目标回放服务器需放行你的页面 origin。\n" +
-            "- 页面和回放都走 http:// → 已开启 insecureHttpOption=AlwaysAllowed，无需额外配置。\n\n" +
-            "构建场景：\n" + string.Join("\n", scenes) + "\n";
+            "- 页面和回放都走 http:// → 已开启 insecureHttpOption=AlwaysAllowed，无需额外配置。\n";
         File.WriteAllText(Path.Combine(outputDir, "README_使用说明.txt"), text);
     }
 }

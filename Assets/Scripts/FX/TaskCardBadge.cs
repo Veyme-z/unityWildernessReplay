@@ -33,16 +33,13 @@ public enum TaskCardState
 public class TaskCardBadge : MonoBehaviour
 {
     static Material s_sharedBgMat;          // 所有卡片共享背景材质（MPB 改色，可 GPU Instancing 合批）
-    static Texture2D s_introTex;            // Intro 状态底板贴图（Resources 懒加载缓存）
-
-    const string RES_TASK_TEX = "Sprites/task";        // Intro 视频加载失败时的兜底图（「接受任务」，Assets/Resources/Sprites/task.png）
-    public const string CLAIM_VIDEO    = "TaskVideos/claim.mp4";          // Intro 领取任务视频（执行任务第一个回合）
-    public const string WORKING_VIDEO  = "TaskVideos/working.mp4";        // Working 破解中视频（StreamingAssets 下，WebGL 相对 URL）
-    public const string SUCCESS_VIDEO  = "TaskVideos/unlock_success.mp4"; // Success 解锁成功视频（密码正确）
-    public const string FAIL_VIDEO     = "TaskVideos/unlock_fail.mp4";    // Fail 解锁失败视频（密码错误）
+    const string RES_TASK_TEX = "Sprites/task";           // 兜底图（「接受任务」，Assets/Resources/Sprites/task.png）
+    const string CLAIM_TEX    = "Sprites/claim";          // Intro 领取任务图（Resources 下同步加载）
+    const string SUCCESS_TEX  = "Sprites/unlock_success"; // Success 解锁成功图（密码正确）
+    const string FAIL_TEX     = "Sprites/unlock_fail";    // Fail 解锁失败图（密码错误）
+    public const string WORKING_VIDEO = "TaskVideos/working.mp4";   // Working 破解中视频（唯一视频，StreamingAssets 下）
 
     const float FADE_TIME = 0.2f;           // 淡入/淡出时长
-    const float RESULT_DURATION = 1.5f;     // Success/Fail 展示时长（播完淡出销毁）
     const float BOUNCE_TIME = 0.3f;         // Success 弹跳时长
     const float SHAKE_TIME = 0.5f;          // Fail 抖动时长
     const float DOT_INTERVAL = 0.5f;        // Working 点循环周期
@@ -50,6 +47,7 @@ public class TaskCardBadge : MonoBehaviour
     const float HP_CLEARANCE = 0.5f;        // 卡片底部至少高出血条 0.5（避免遮挡血条）
     const float BORDER = 0.05f;             // 金黄描边厚度（卡片单位，×CARD_SCALE=世界宽度）；让卡片在草地/图片上轮廓清晰
     const int INTRO_MIN_ROUNDS = 2;         // Intro（接受任务图片）至少展示的回合数：roundCost==0 仅接任务那回合，延长避免一闪而过
+    const int RESULT_ROUNDS = 2;            // Success/Fail 静态图至少展示的回合数（round-based，速度无关），到点淡出销毁
 
     TextMesh _tm;
     MeshRenderer _bgRend;
@@ -69,6 +67,7 @@ public class TaskCardBadge : MonoBehaviour
     int _lastDots = -1;                     // Working 已显示的点数（避免每帧重建字符串）
     GameObject _txtGo;                      // 文字对象（Intro 图片态隐藏，避免"接受任务"字叠在图上）
     int _introStartCur = -1;                // 进入 Intro 时记录的回合（用于延长展示到 INTRO_MIN_ROUNDS）
+    int _resultStartCur = -1;               // 进入 Success/Fail 时记录的回合（静态图展示 RESULT_ROUNDS 回合后淡出）
 
     // 视频渲染：正常路径用 TaskBadgeManager 的全局共享视频 RT（游戏开始即就绪并循环播放）——Working/结果态
     // 立即可显示，无中间加载态。本地 VideoSlot（每视频独立 VideoPlayer+RenderTexture）仅作共享视频未就绪的
@@ -83,9 +82,7 @@ public class TaskCardBadge : MonoBehaviour
     }
     readonly Dictionary<string, VideoSlot> _videos = new Dictionary<string, VideoSlot>();
     string _shownUrl;                           // 当前底板显示的视频 url（null=图片/纯色）
-    float _resultDuration = RESULT_DURATION;    // Success/Fail 展示时长（视频就绪后取 max(视频时长)，看完一遍再淡出）
-    bool _fallback;                             // 当前状态处于"视频加载失败 → 纯色+文字"降级
-    bool _resultPreloadStarted;                 // success/fail 视频是否已开始延迟准备（working 就绪后才触发，避免三路并发抢解码）
+    bool _fallback;                             // 当前状态处于"资源加载失败 → 纯色+文字"降级
 
     public bool IsFinished { get { return _isFinished; } }
     public TaskCardState CurrentState { get { return _state; } }
@@ -169,11 +166,9 @@ public class TaskCardBadge : MonoBehaviour
         _tm.color = Color.white;
         _txtGo = txt.gameObject;
 
-        // 结果视频（success/fail）提前后台 Prepare：结果态来临时立即可从头播放一遍再淡出，
-        // 不等本地 Prepare（否则结果到了还要等就绪，且不能保证从头）。working/claim 走全局共享播放器（见
-        // TaskBadgeManager.EnsureSharedVideo），不在此重复准备（本地 slot 仅作共享未就绪的回退）。
-        EnsureVideo(SUCCESS_VIDEO).player.Prepare();
-        EnsureVideo(FAIL_VIDEO).player.Prepare();
+        // Intro/Success/Fail 均为静态图片（Resources 同步加载），无需预准备视频；
+        // working 是唯一视频，走全局共享播放器（见 TaskBadgeManager.EnsureSharedVideo），
+        // 本地 slot 仅作共享未就绪的回退。
     }
 
     /// <summary>由 TaskBadgeManager 每帧调用。同状态幂等（不重置动画）；
@@ -223,24 +218,29 @@ public class TaskCardBadge : MonoBehaviour
         switch (state)
         {
             case TaskCardState.Intro:
-                // 执行任务第一个回合播放「领取任务」视频（全局共享已就绪则立即可用；未就绪保持 task.png 兜底）
+                // 领取任务静态图（Resources 同步加载，WebGL 安全），至少展示 INTRO_MIN_ROUNDS 回合（见 SetState 延迟）
                 _stateColor = Color.white;
-                BeginClaimVideo();
+                _shownUrl = null;
+                SetMainTexture(LoadTex(CLAIM_TEX));
                 break;
             case TaskCardState.Working:
-                BeginWorkingVideo();                    // 就绪→直接上视频；未就绪→保持 Intro 图，就绪后无缝接管
+                BeginWorkingVideo();                    // 唯一视频：全局共享 working 循环播放；未就绪保持当前画面
                 break;
             case TaskCardState.Success:
-                _resultDuration = RESULT_DURATION;
-                BeginResultVideo(SUCCESS_VIDEO);        // 就绪→上 success 视频；未就绪→保持工作视频/图片，就绪后接管
+                _stateColor = Color.white;
+                _resultStartCur = _player != null ? _player.cur : -1;   // 记录结果起始回合
+                _shownUrl = null;
+                SetMainTexture(LoadTex(SUCCESS_TEX));   // 解锁成功图，RESULT_ROUNDS 回合后淡出销毁
                 break;
             case TaskCardState.Fail:
-                _resultDuration = RESULT_DURATION;
-                BeginResultVideo(FAIL_VIDEO);           // 同上，fail 视频
+                _stateColor = Color.white;
+                _resultStartCur = _player != null ? _player.cur : -1;
+                _shownUrl = null;
+                SetMainTexture(LoadTex(FAIL_TEX));      // 解锁失败图，RESULT_ROUNDS 回合后淡出销毁
                 break;
         }
-        // Intro 图 / Working 视频 / Success/Fail 视频均自带字样 → 隐藏文字；
-        // 仅"视频加载失败 → 纯色+文字"降级态（_fallback）显示文字。
+        // Intro 图 / Working 视频 / Success/Fail 图均自带字样 → 隐藏文字；
+        // 仅"资源加载失败 → 纯色+文字"降级态（_fallback）显示文字。
         if (_txtGo != null) _txtGo.SetActive(_fallback);
         ApplyAlpha(1f);
     }
@@ -262,12 +262,21 @@ public class TaskCardBadge : MonoBehaviour
         _bgRend.SetPropertyBlock(_mpb);
     }
 
-    /// <summary>Intro 底板贴图：Resources 懒加载（打包进 Build，WebGL 同步可用）；缺失回退 null → 纯色版。</summary>
+    /// <summary>Resources 图片懒加载缓存：同步加载（打包进 Build，WebGL 同步可用），缺失返回 null → 纯色降级。</summary>
+    static readonly Dictionary<string, Texture2D> s_texCache = new Dictionary<string, Texture2D>();
+    static Texture2D LoadTex(string path)
+    {
+        Texture2D t;
+        if (s_texCache.TryGetValue(path, out t)) return t;
+        t = Resources.Load<Texture2D>(path);
+        s_texCache[path] = t;
+        return t;
+    }
+
+    /// <summary>兜底图（task.png）：Resources 懒加载；缺失回退 null → 纯色版。</summary>
     static Texture2D IntroTex()
     {
-        if (s_introTex == null)
-            s_introTex = Resources.Load<Texture2D>(RES_TASK_TEX);
-        return s_introTex;
+        return LoadTex(RES_TASK_TEX);
     }
 
     // ══════════ 视频渲染（多 slot：working/success/fail 各一个 VideoPlayer + RenderTexture）══════════
@@ -334,67 +343,6 @@ public class TaskCardBadge : MonoBehaviour
         }
     }
 
-    /// <summary>进入 Intro：让「领取任务」视频接管底板（逻辑同 BeginWorkingVideo，优先全局共享已就绪 RT）。
-    /// 加载失败降级为 task.png 图片（不叠文字，图片自带「接受任务」字样）。</summary>
-    void BeginClaimVideo()
-    {
-        var shared = TaskBadgeManager.GetSharedVideoRT(CLAIM_VIDEO);
-        if (shared != null)
-        {
-            _shownUrl = CLAIM_VIDEO;
-            SetMainTexture(shared);
-            return;
-        }
-        var slot = EnsureVideo(CLAIM_VIDEO);
-        if (slot.failed)
-        {
-            SetMainTexture(IntroTex());          // 降级：task.png 图片兜底
-            return;
-        }
-        if (slot.prepared && slot.rt != null)
-        {
-            _shownUrl = CLAIM_VIDEO;
-            SetMainTexture(slot.rt);
-        }
-        else
-        {
-            if (_shownUrl == null) SetMainTexture(IntroTex());  // 未就绪且无当前画面 → Intro 图兜底
-            slot.player.Prepare();
-        }
-    }
-
-    /// <summary>进入 Success/Fail：让结果视频接管底板。结果视频必须**从头播放一遍再淡出**（不是按回合循环）——
-    /// 用卡片自己的 slot（Awake 已后台 Prepare，见 PreloadResult 注释）：就绪 → `time=0` + 开播 + 直接显示自己 RT，
-    /// 播完（_resultDuration = 视频时长）淡出销毁。**不用全局共享结果播放器的 RT**——共享播放器一直在循环，
-    /// `VideoPlayer.time=0` 的 seek 在播放中是延迟生效的，卡片切过去会先看到旧位置的画面（若恰好靠近开头，
-    /// 表现为"前 ~1s 被播两遍"）。未就绪（极少数）保持当前画面 + Prepare，就绪后由 Update 无缝接管。</summary>
-    void BeginResultVideo(string url)
-    {
-        var slot = EnsureVideo(url);
-        if (slot.failed)
-        {
-            _fallback = true;
-            SetFallbackVisual(_state);                  // 降级纯色 + 文字
-            return;
-        }
-        if (slot.prepared && slot.rt != null)
-        {
-            slot.player.isLooping = false;              // 结果视频播一遍就停（末尾停帧，淡出销毁）
-            // 淡出以"视频实际播完"为准（见 Update 的 videoDone 判定），此处时长 +1s 只做兜底超时——
-            // WebGL 上视频实际播放可能比名义时长慢，纯计时到点淡出会导致"没播完卡片就消失"。
-            _resultDuration = Mathf.Max(_resultDuration, (float)slot.player.length + 1f);
-            slot.player.time = 0;                       // 从头（fresh/暂停态 seek 立即生效）
-            PlayVideo(slot);                            // 从头播放（不可见）
-            // 不设 _shownUrl / MainTex：保持当前画面（working 视频/Intro 图）不动，
-            // 由 Update 渲染出帧（frame>=1）后无缝接管——避免刚分配的 RT 黑帧闪一下。
-            // 直接创建在结果态（Seek/暂停）时无当前画面 → Intro 图兜底，避免白/空底。
-            if (_shownUrl == null) SetMainTexture(IntroTex());
-            return;
-        }
-        // 未就绪：保持当前画面（working 视频 / Intro 图）不动，就绪后由 Update 无缝接管
-        if (_shownUrl == null) SetMainTexture(IntroTex());  // 无当前画面 → Intro 图兜底（无白底）
-        slot.player.Prepare();
-    }
 
     /// <summary>视频就绪回调：交给 MarkSlotPrepared（与 WebGL isPrepared 轮询共用同一套就绪逻辑）。
     /// 显示/播放由 Update 按状态驱动，本回调不做任何自动开播/换贴图（避免"就绪即抢底板"破坏当前画面）。</summary>
@@ -418,16 +366,7 @@ public class TaskCardBadge : MonoBehaviour
             slot.rt = new RenderTexture(Mathf.Max(2, vw), Mathf.Max(2, vh), 0);
         }
         slot.player.targetTexture = slot.rt;
-        if (slot.url == SUCCESS_VIDEO || slot.url == FAIL_VIDEO)
-            _resultDuration = Mathf.Max(_resultDuration, (float)slot.player.length + 1f);   // 兜底超时（实际淡出以视频播完为准）
-
-        // working 就绪后才后台准备 success/fail（结果态备用）：避免并发 Prepare 抢解码器
-        if (slot.url == WORKING_VIDEO && !_resultPreloadStarted)
-        {
-            _resultPreloadStarted = true;
-            EnsureVideo(SUCCESS_VIDEO).player.Prepare();
-            EnsureVideo(FAIL_VIDEO).player.Prepare();
-        }
+        // 结果态（Success/Fail）已是静态图，无结果视频 slot；此处仅处理 working 回退 slot 的就绪
     }
 
     /// <summary>轮询兜底：WebGL 上 prepareCompleted 可能不触发，改用 isPrepared 轮询同步本地 slot 就绪态。</summary>
@@ -493,30 +432,19 @@ public class TaskCardBadge : MonoBehaviour
         else if (s.player.isPlaying) s.player.Pause();
     }
 
-    /// <summary>循环兜底：视频播到结尾（loopPointReached）回到开头续播。
-    /// 仅 working 循环续播（显示时长跟回合走）；success/fail 结果视频**播一遍就停在末尾等淡出**，
-    /// 不在此重启（否则又变成循环，且末尾重启会露出开头画面）。isLooping 正常时本回调也触发，
-    /// 重置到 0 即循环本身，幂等无害。</summary>
+    /// <summary>循环兜底：唯一视频 working 播到结尾（loopPointReached）回到开头续播（显示时长跟回合走）。
+    /// 结果态/Success/Fail 已是静态图，无结果视频；isLooping 正常时本回调也触发，重置到 0 即循环本身，幂等无害。</summary>
     void OnVideoLoop(VideoPlayer vp)
     {
-        VideoSlot slot = FindSlot(vp);
-        if (slot != null && (slot.url == SUCCESS_VIDEO || slot.url == FAIL_VIDEO)) return;   // 结果不循环
         vp.time = 0;
         bool shouldPlay = _player == null || _player.playing;
         if (shouldPlay) vp.Play();
     }
 
-    /// <summary>当前状态应显示的视频 url（null=图片/纯色，无需视频）。</summary>
+    /// <summary>当前状态应显示的视频 url（仅 Working 有视频；Intro/Success/Fail 为静态图 → null）。</summary>
     string TargetDisplayUrl()
     {
-        switch (_state)
-        {
-            case TaskCardState.Intro:   return CLAIM_VIDEO;
-            case TaskCardState.Working: return WORKING_VIDEO;
-            case TaskCardState.Success: return SUCCESS_VIDEO;
-            case TaskCardState.Fail:    return FAIL_VIDEO;
-            default: return null;
-        }
+        return _state == TaskCardState.Working ? WORKING_VIDEO : null;
     }
 
     /// <summary>由 VideoPlayer 找所属 slot（回调参数是具体 player）。</summary>
@@ -574,13 +502,9 @@ public class TaskCardBadge : MonoBehaviour
             {
                 if (_shownUrl == target)
                 {
-                    // 已显示：保证播放（暂停后恢复）。结果视频播完（_elapsed 到时长 / 视频到末尾）即进入淡出，
-                    // 不再续播/重启（isLooping=false 停在末尾，PlayVideo 会把末尾的视频 time=0 重启，露开头画面）。
-                    bool isResult = _state == TaskCardState.Success || _state == TaskCardState.Fail;
-                    bool resultDone = isResult && (_elapsed >= _resultDuration
-                        || slot.player.time >= slot.player.length - 0.05f);
-                    if (!resultDone) PlayVideo(slot);
-                    foreach (var kv in _videos)                  // 其余视频停掉（结果接管后 working 等）
+                    // 已显示：保证播放（暂停后恢复）；working 循环，其余视频停掉
+                    PlayVideo(slot);
+                    foreach (var kv in _videos)                  // 其余视频停掉（仅 working 一个 slot，此处保底）
                         if (kv.Key != target && kv.Value.player != null && kv.Value.player.isPlaying)
                             kv.Value.player.Pause();
                 }
@@ -663,17 +587,13 @@ public class TaskCardBadge : MonoBehaviour
             ApplyAlpha(1f);
         }
 
-        // Success/Fail 播完（看完一遍视频）→ 淡出 → Hidden。
-        // 以"视频实际播到末尾"为准触发（WebGL 播放可能比名义时长慢，纯计时会"没播完就消失"）；
-        // _resultDuration（时长+1s）只做兜底超时，避免视频播完事件/位置判定异常时卡片一直挂着。
+        // Success/Fail 静态图：展示 RESULT_ROUNDS（2）回合后淡出 → Hidden → 管理器销毁。
+        // round-based（记录进入时的回合，速度无关、暂停冻结），比计时/视频播完更稳。
         if (_state == TaskCardState.Success || _state == TaskCardState.Fail)
         {
-            bool videoDone = false;
-            VideoSlot res;
-            if (_videos.TryGetValue(TargetDisplayUrl(), out res) && res != null
-                && res.player != null && res.prepared && res.player.length > 0f)
-                videoDone = res.player.time >= res.player.length - 0.05f;
-            if (videoDone || _elapsed >= _resultDuration)
+            bool roundsDone = _player != null && _resultStartCur >= 0
+                && _player.cur - _resultStartCur >= RESULT_ROUNDS;
+            if (roundsDone)
             {
                 _fadingOut = true;
                 _fadingIn = false;

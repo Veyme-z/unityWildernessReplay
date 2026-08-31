@@ -7,23 +7,43 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: Material #67
+    second: {fileID: 2100000, guid: a00e6d614c573d342800c3d7de57877b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material #68
+    second: {fileID: 2100000, guid: a00e6d614c573d342800c3d7de57877b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material #78
+    second: {fileID: 2100000, guid: a00e6d614c573d342800c3d7de57877b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material #79
+    second: {fileID: 2100000, guid: a00e6d614c573d342800c3d7de57877b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: Texture_CarAccessory
-    second: {fileID: 2100000, guid: 5d1cb8e2b7a4fa84b8fadda573ac6d51, type: 2}
+    second: {fileID: 2100000, guid: a00e6d614c573d342800c3d7de57877b, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Texture_CarBody
-    second: {fileID: 2100000, guid: a6d99905439ad8844992dedc85b70ec8, type: 2}
+    second: {fileID: 2100000, guid: 7f4b0b791e73a744a8a2c4357a95fd60, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Texture_Glass
-    second: {fileID: 2100000, guid: 53d9d2db703bc4c4282206f56ad00976, type: 2}
+    second: {fileID: 2100000, guid: 33f59668094453743a08776f4d23200c, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Texture_Inside
-    second: {fileID: 2100000, guid: 092711fca89ca064fb310825da50d89d, type: 2}
+    second: {fileID: 2100000, guid: 32564f7a6ce7c62428587276e6345cd5, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

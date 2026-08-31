@@ -233,7 +233,29 @@ public class TowerVisualController : MonoBehaviour
         if (targetWorldPositions == null || targetWorldPositions.Length == 0) return;
         Vector3 primary = targetWorldPositions[0];
 
-        Vector3 fullDir = primary - _turret.position;
+        FireMuzzleOnly(primary);
+
+        if (_towerType == "Flamethrower") return;          // 火箭发射台：无弹道（爆炸特效由 ReplayPlayer 播放）
+
+        if (_towerType == "RPG")                           // 电磁狙击炮：枪口闪光 + 落点电流电击（CFXR Electrified）
+        {
+            HitAt(primary);
+            return;
+        }
+
+        foreach (var wp in targetWorldPositions)           // 加特林：N 条弹道 + N 个命中闪光
+        {
+            SpawnTracer(wp);
+            SpawnHitRing(wp);
+        }
+    }
+
+    /// <summary>塔开火：炮塔转向目标 + 后坐力 + 枪口粒子/闪光，但**不下发目标命中效果**（留给飞行弹体到达时）。</summary>
+    public void FireMuzzleOnly(Vector3 targetWorldPos)
+    {
+        if (!_setup || _turret == null) return;
+
+        Vector3 fullDir = targetWorldPos - _turret.position;
         Vector3 dir = fullDir;
         dir.y = 0f;
         if (dir.sqrMagnitude < 0.0001f) dir = _turret.forward;
@@ -247,31 +269,26 @@ public class TowerVisualController : MonoBehaviour
         _recoilKicking = true;
         _recoilT = 0f;
 
-        // 播放一次枪口粒子
-        foreach (var ps in _muzzleParticles)
-            if (ps != null) ps.Play();
-        if (_muzzleParticles.Length > 0)
+        // 播放一次枪口粒子（电磁炮 RPG 除外：枪口特效改由电球在枪口充能承担，避免和 CFXR 混搭）
+        if (_towerType != "RPG")
         {
-            _particlesFired = true;
-            _fireTime = Time.time;
+            foreach (var ps in _muzzleParticles)
+                if (ps != null) ps.Play();
+            if (_muzzleParticles.Length > 0)
+            {
+                _particlesFired = true;
+                _fireTime = Time.time;
+            }
+            SpawnMuzzleFlash();
         }
+    }
 
-        SpawnMuzzleFlash();
-
-        if (_towerType == "Flamethrower") return;          // 火箭发射台：无弹道（爆炸特效由 ReplayPlayer 播放）
-
-        if (_towerType == "RPG")                           // 电磁狙击炮：枪口闪光 + 落点电流电击（CFXR Electrified）
-        {
-            SpawnHitRing(primary);
-            FxFactory.PlayElectricHit(primary);
-            return;
-        }
-
-        foreach (var wp in targetWorldPositions)           // 加特林：N 条弹道 + N 个命中闪光
-        {
-            SpawnTracer(wp);
-            SpawnHitRing(wp);
-        }
+    /// <summary>目标命中效果（命中环 + CFXR 电流电击），飞行弹体到达目标时调用。电流按阵营染色（红=淡红/蓝=淡蓝）。</summary>
+    public void HitAt(Vector3 targetWorldPos)
+    {
+        if (!_setup) return;
+        SpawnHitRing(targetWorldPos);
+        FxFactory.PlayElectricHit(targetWorldPos, FxFactory.FactionElectricColor(_faction));
     }
 
     /// <summary>清除攻击状态（Seek 跳转后调用）：清空转向/后坐力/粒子/闪光/Tracer/命中闪光，复位到待机 180°。</summary>

@@ -116,6 +116,11 @@ public static class SceneBuilder
         BuildPerimeterFence(root, w, h, ox, oz);
 
         // ── 地图数据瓦片 ──
+        // 小贩(tile 9) 世界坐标：装甲车车头朝向它
+        Vector3 vendorPos = new Vector3(0f, 0f, 0f);
+        for (int i = 0; i < map.data.Length; i++)
+            if (map.data[i] == 9) { int vx = i % w, vy = i / w; vendorPos = new Vector3(vx - ox, 0f, oz - vy); break; }
+
         for (int y = 0; y < h; y++)
         {
             for (int x = 0; x < w; x++)
@@ -127,6 +132,8 @@ public static class SceneBuilder
                     AddWaterTile(root, "water_" + x + "_" + y, c);
                 else if (t == 8 || t == 9 || t == 10)
                     BuildNeutralNpc(root, t, x, y, c);
+                else if (t == 40 || t == 41 || t == 42 || t == 43)
+                    BuildMissionPoint(root, t, x, y, c, vendorPos);
                 else if (t == 4 || t == 3 || t == 5 || t == 1)
                     AddStandardCube(root, "found_" + x + "_" + y, c, new Vector3(1.02f, 0.1f, 1.02f),
                             t == 1 ? new Color(0.42f, 0.42f, 0.45f) : new Color(0.35f, 0.33f, 0.40f));
@@ -442,6 +449,37 @@ public static class SceneBuilder
         // 小贩头顶常驻名牌：黑色框 + "小贩"
         if (t == 9 && npcGo != null)
             NpcNameLabel.Attach(npcGo.transform, "小贩", labelY);
+    }
+
+    // 任务点装饰：宝箱(tile 40/42) / 装甲车(tile 41/43)，由地图 tile 驱动（同小贩/武器商店的摆放逻辑）。
+    // 位置即 Build 循环的格子中心 c（y=0.01 贴地）。装甲车原生约 2.7×5.3m，VEHICLE_SCALE=0.27 → 约 0.74×1.44m（0.18×1.5）。
+    const float VEHICLE_SCALE = 0.27f;
+
+    static void BuildMissionPoint(Transform root, int t, int x, int y, Vector3 c, Vector3 vendorPos)
+    {
+        string path = null;
+        float scale = 1f;
+        if (t == 40 || t == 42) path = "Prefabs/GoldChest";                 // 宝箱
+        else if (t == 41 || t == 43) { path = "Prefabs/K151ArmoredVehicle"; scale = VEHICLE_SCALE; } // 装甲车
+        if (path == null) return;
+
+        var prefab = Resources.Load<GameObject>(path);
+        if (prefab == null) { Debug.LogWarning("[SceneBuilder] 缺少任务点 prefab: " + path); return; }
+
+        var go = Object.Instantiate(prefab, root);
+        go.name = "Mission_" + t + "_" + x + "_" + y;
+        go.transform.position = c;                 // c 已含 0.01f 贴地
+        go.transform.rotation = Quaternion.identity;
+        if (scale != 1f) go.transform.localScale = new Vector3(scale, scale, scale);
+
+        // 装甲车车头朝向小贩（水平方向，忽略 Y）；宝箱保持 +Z(北)
+        if (t == 41 || t == 43)
+        {
+            Vector3 dir = vendorPos - c;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.0001f)
+                go.transform.rotation = Quaternion.LookRotation(dir.normalized);
+        }
     }
 
     static void AddStandardCube(Transform parent, string name, Vector3 pos, Vector3 scale, Color color)

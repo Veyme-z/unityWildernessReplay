@@ -110,6 +110,10 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
         // 跳转时瞬间到位 + 清除死/濒死单位（避免幽灵贴图）
         if (!withFx)
         {
+            // Seek 跳转：清理残留的瞬态 CFXR 特效（电球/落点电击/爆炸等，均为根级对象），避免白天还看到夜晚的特效
+            foreach (var cfg in UnityEngine.Object.FindObjectsOfType<CartoonFX.CFXR_Effect>(true))
+                if (cfg.transform.parent == null)
+                    Destroy(cfg.gameObject);
             var deadIds = new List<long>();
             foreach (var u in engine.units.Values)
             {

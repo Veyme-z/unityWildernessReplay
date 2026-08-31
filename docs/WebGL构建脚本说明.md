@@ -49,11 +49,13 @@
 | 浏览器标签标题 | `Regex.Replace(html, "<title>...", "<title>荒野回放 · Wilderness Replay</title>", ...)` 那行 |
 | 背景色 / 加载卡片 / 进度条配色 | 注入的 `<style>...</style>` 块（CSS 字符串），如 `#unity-loading-bar`、`#unity-progress-bar-full`、`background: #0b1020` 等 |
 | 加载中的标题 / 副标题文字 | `<div class="wilderness-loading-title">荒野回放</div>` 和 `wilderness-loading-sub` 那两行 |
+| 加载百分比文字 / 进度动效 | `wilderness-progress-text`（JS 实时更新百分比）与 `#unity-progress-bar-full` 的条纹动画（`@keyframes wildernessStripes`） |
 | 画布是否铺满窗口 | `canvas.style.width = "100vw"` / `canvas.style.height = "100vh"` 两行 |
 | 资源缓存版本戳 | 结尾 `buildStamp` 相关的 `.Replace(...)` 段（构建时间戳，不用动） |
 
 **注意事项**：
 - 所有替换都是"匹配到才替换，匹配不到自动跳过"，**不会改坏文件**。
+- 进度条的真实百分比由 Unity 的 `progress` 回调驱动，它**只在下载 `.data` 时**报告 0→100%，框架/wasm 编译阶段没有回调；脚本已加条纹动画保证这些阶段进度条依然可见。
 - 想加"全屏品牌封面 + 加载完淡出"这类更复杂的启动页，在 `PatchIndexHtml` 里参照 Lychee 的 `#lychee-splash` 写法追加即可。
 - 改完一定**重新构建**，改旧构建包里的 `index.html` 会被下次构建清掉。
 

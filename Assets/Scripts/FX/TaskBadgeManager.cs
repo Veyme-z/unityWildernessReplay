@@ -53,10 +53,8 @@ public class TaskBadgeManager : MonoBehaviour
         var all = FindObjectsOfType<TaskBadgeManager>();
         for (int i = 0; i < all.Length; i++)
             if (all[i] != this) { Destroy(this); return; }
-        EnsureSharedVideo(TaskCardBadge.CLAIM_VIDEO);
+        // 仅 working 是视频（Intro/Success/Fail 均为 Resources 静态图），全局共享播放器只建它一个
         EnsureSharedVideo(TaskCardBadge.WORKING_VIDEO);
-        EnsureSharedVideo(TaskCardBadge.SUCCESS_VIDEO);
-        EnsureSharedVideo(TaskCardBadge.FAIL_VIDEO);
     }
 
     /// <summary>创建/复用某个任务视频的全局共享播放器（隐藏对象）：Prepare 完成即循环播放进共享 RT。
@@ -120,15 +118,15 @@ public class TaskBadgeManager : MonoBehaviour
             }
         }
 
-        // 共享任务视频：① 轮询 isPrepared（WebGL 上 prepareCompleted 可能不触发）兜底建立 RT + 绑定；
-        // ② 仅"有卡片显示它"才播放：claim 在 Intro 显示、working 在 Working 显示（Intro 阶段预卷，
-        //    保证 Working 进入即开即用不闪黑）；success/fail 只预热不播（结果态由卡片自有播放器从头播）。
+        // 共享 working 视频：① 轮询 isPrepared（WebGL 上 prepareCompleted 可能不触发）兜底建立 RT + 绑定；
+        // ② 有卡片处于 Working（显示它）或 Intro（预卷，保证 Working 进入即开即用不闪黑）才播放，
+        //    空闲期暂停省解码（WebGL 并发解码是卡顿源）。仅 working 是视频，只此一个共享播放器。
         foreach (var kv in s_sharedPlayers)
         {
             VideoPlayer vp = kv.Value;
             if (vp == null) continue;
-            string file = kv.Key;
             if (!vp.isPrepared) continue;
+            string file = kv.Key;
             RenderTexture rt;
             if (!s_sharedRTs.TryGetValue(file, out rt) || rt == null)
             {
@@ -137,10 +135,7 @@ public class TaskBadgeManager : MonoBehaviour
                 vp.targetTexture = rt;
                 s_sharedLengths[file] = vp.length;
             }
-            bool want;
-            if (file == TaskCardBadge.CLAIM_VIDEO) want = _player.playing && claimCards > 0;
-            else if (file == TaskCardBadge.WORKING_VIDEO) want = _player.playing && (workingCards > 0 || claimCards > 0);  // Intro 预卷
-            else want = false;   // success/fail 只预热不播
+            bool want = _player.playing && (workingCards > 0 || claimCards > 0);
             if (want) { if (!vp.isPlaying) vp.Play(); }
             else if (vp.isPlaying) vp.Pause();
         }
