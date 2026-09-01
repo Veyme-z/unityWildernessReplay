@@ -44,6 +44,14 @@ public static class ReplayParser
     static ReplayStart ParseStart(Dictionary<string, object> o)
     {
         var s = new ReplayStart { type = "start" };
+        // vendorShopPriceChange.date.startDay/stopDay：小贩回收价波动窗口（推理类【官方消息】影响）
+        var pc = MiniJson.Obj(o, "vendorShopPriceChange");
+        var date = pc != null ? MiniJson.Obj(pc, "date") : null;
+        if (date != null)
+        {
+            s.priceChangeStartDay = MiniJson.Int(date, "startDay", -1);
+            s.priceChangeEndDay = MiniJson.Int(date, "stopDay", -1);
+        }
         var m = MiniJson.Obj(o, "map");
         if (m != null)
         {
@@ -121,6 +129,18 @@ public static class ReplayParser
                     text = MiniJson.Str(d, "text") ?? (MiniJson.Str(d, "content") ?? "")
                 });
             }
+        var vsp = MiniJson.Arr(o, "vendorShopList");
+        if (vsp != null)
+            foreach (var v in vsp)
+            {
+                var vd = MiniJson.Dict(v);
+                if (vd == null) continue;
+                r.vendorShopList.Add(new ReplayVendorShop
+                {
+                    name = MiniJson.Str(vd, "name") ?? "",
+                    price = MiniJson.Int(vd, "price", 0)
+                });
+            }
         var teams = MiniJson.Arr(o, "teams");
         if (teams != null)
             foreach (var t in teams) r.teams.Add(ParseTeam(MiniJson.Dict(t)));
@@ -143,6 +163,7 @@ public static class ReplayParser
         var task = MiniJson.Obj(o, "task");
         if (task != null)
         {
+            var tpos = MiniJson.Obj(task, "pos");
             t.task = new ReplayTask
             {
                 taskType = MiniJson.Str(task, "taskType") ?? "",
@@ -151,8 +172,17 @@ public static class ReplayParser
                 level = MiniJson.Str(task, "level") ?? "",
                 reward = MiniJson.Int(task, "reward", 0),
                 isTaskComplete = MiniJson.Bool(task, "isTaskComplete", false),
-                roundCost = MiniJson.Int(task, "roundCost", 0)
+                roundCost = MiniJson.Int(task, "roundCost", 0),
+                taskX = tpos != null ? MiniJson.Int(tpos, "x", 0) : 0,
+                taskY = tpos != null ? MiniJson.Int(tpos, "y", 0) : 0
             };
+        }
+        // allTaskInfo：自进化类1/2 每类三元 [已完成, 失败, 总数]（实际数据可能只有 [完成, 总数] 两项，lenient 兼容）
+        var ati = MiniJson.Obj(o, "allTaskInfo");
+        if (ati != null)
+        {
+            ParseTaskProgress(MiniJson.Arr(ati, "selfEvolutionTask1"), out t.task1Done, out t.task1Failed, out t.task1Total);
+            ParseTaskProgress(MiniJson.Arr(ati, "selfEvolutionTask2"), out t.task2Done, out t.task2Failed, out t.task2Total);
         }
         var roles = MiniJson.Arr(o, "roles");
         if (roles != null)
@@ -164,6 +194,25 @@ public static class ReplayParser
                 t.roles.Add(role);
             }
         return t;
+    }
+
+    /// <summary>解析 allTaskInfo 单类进度数组 [完成, 失败, 总数]；兼容实际数据只有 [完成, 总数] 两项的格式。</summary>
+    static void ParseTaskProgress(List<object> arr, out int done, out int failed, out int total)
+    {
+        done = 0; failed = 0; total = 0;
+        if (arr == null || arr.Count == 0) return;
+        if (arr.Count >= 3) { done = ConvInt(arr[0]); failed = ConvInt(arr[1]); total = ConvInt(arr[2]); }
+        else if (arr.Count == 2) { done = ConvInt(arr[0]); total = ConvInt(arr[1]); }
+        else { done = ConvInt(arr[0]); }
+    }
+
+    static int ConvInt(object v)
+    {
+        if (v == null) return 0;
+        if (v is long l) return (int)l;
+        if (v is int i) return i;
+        if (v is double d) return (int)d;
+        int r; return int.TryParse(v.ToString(), out r) ? r : 0;
     }
 
     static ReplayRole ParseRole(Dictionary<string, object> d)

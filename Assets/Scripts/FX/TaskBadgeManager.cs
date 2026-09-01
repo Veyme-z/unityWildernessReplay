@@ -107,10 +107,11 @@ public class TaskBadgeManager : MonoBehaviour
 
         // 统计当前显示 claim(Intro)/working(Working) 的卡片数：共享视频只在有卡片需要显示时才播放，
         // 空闲期（无任务卡片）全部暂停省解码——WebGL 并发解码正是卡顿源（对齐 LycheeMap"只播当前显示的"）。
+        // 文字模式卡（装甲车任务点）不显示视频，不计入（避免 working 空转解码）。
         int claimCards = 0, workingCards = 0;
         foreach (var kv in _activeBadges)
         {
-            if (kv.Value == null) continue;
+            if (kv.Value == null || kv.Value.IsTextMode) continue;
             switch (kv.Value.CurrentState)
             {
                 case TaskCardState.Intro: claimCards++; break;

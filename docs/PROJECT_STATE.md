@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-08-31
+> **最后更新**：2026-09-01
 ---
 
 ## 一、项目是什么
@@ -97,11 +97,13 @@ Resources/Prefabs/Buildings/
 ### 任务点（2026-08-31）
 ```
 Resources/Prefabs/
-├── K151ArmoredVehicle.prefab  # 韩军 K151 轻装甲车（木林迷彩，未来任务点）
-└── GoldChest.prefab           # 金色宝箱（未来任务点）
+├── broken_K151ArmoredVehicle.prefab  # 韩军 K151 破损卡车（任务点初始/重生形态）
+├── K151ArmoredVehicle.prefab         # 韩军 K151 完好装甲车（任务完成后的修复形态，开向小贩）
+└── GoldChest.prefab                  # 金色宝箱（未来任务点）
 ```
 - 均为包装 Prefab（根节点 + `Model` 子节点）。适配详情见 [资源问题与解决方案.md](资源问题与解决方案.md)。
-- **摆放**（`SceneBuilder.BuildMissionPoint`）：地图 tile 40/42 → 宝箱、41/43 → 装甲车，位置 = 格子中心世界坐标（game 坐标 (14,14)(23,14) 宝箱、(17,17)(26,17) 装甲车）。装甲车 `VEHICLE_SCALE=0.27`（约 0.74×1.44m，车头+Z），用 `LookRotation` 使车头朝小贩(tile 9)。当前 replay.txt 已含这 4 个 marker tile。
+- **摆放**（`SceneBuilder.BuildMissionPoint`）：地图 tile 40/42 → 宝箱、41/43 → 装甲车，位置 = 格子中心世界坐标（game 坐标 (14,14)(23,14) 宝箱、(17,17)(26,17) 装甲车）。装甲车 `VEHICLE_SCALE=0.27`（约 0.74×1.44m，车头+Z），用 `LookRotation` 使车头朝小贩(tile 9)。当前 replay.txt 已含这 4 个 marker tile。任务点根节点挂 `MissionPoint` 组件（记 gameX/Y、isVehicle）。
+- **任务完成售卖**（2026-09-01，`MissionVehicleDriver` + `MissionPoint.StartSellCycle`）：任务点初始/重生形态是**破损卡车**（`broken_K151ArmoredVehicle.prefab`）；各队「自进化类2」任务（`TaskCardBadge.REPAIR_TASK_TYPE`）完成跳变时，按任务 `task.pos`（ReplayTask 已解析）定位对应卡车：**破损→在原任务点换成完好卡车**（`K151ArmoredVehicle.prefab`）→ **直线开向小贩、小贩前 `STOP_BEFORE_VENDOR=1.2m` 停下**（不调头不压到小贩）→ 卡车上显示「贩卖成功」徽标（`TradeBadge.ShowTextWorld`：挂到 scale=1 的地图根 + 世界坐标定位卡车上方 0.8m，**不继承卡车 0.27 缩放**——否则弹出/上浮动画会被放大、位置漂移；工人购买面板同款字号/黑底板自适应，1.5s 后独立淡出）→ 消失 → **原任务点重生破损车**（供下次任务）；暂停冻结。
 
 ### 防御塔（Cube Tower Defense，已转 Built-in）
 - **源素材**（URP 专用，勿改）：`Assets/CubeTowerDefense/`
@@ -360,6 +362,8 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-09-01 | **装甲车任务完成 → 破损车修复成完好车 → 开向小贩售卖 → 消失重生**：`MissionVehicleDriver`（挂 ReplayEntry，监控各队「自进化类2」任务完成跳变）+ `MissionPoint.StartSellCycle`（任务点初始/重生是**破损车** `broken_K151ArmoredVehicle.prefab`，完成时在原任务点换成完好车 `K151ArmoredVehicle.prefab` → 直线开向小贩、小贩前 `STOP_BEFORE_VENDOR=1.2m` 停下不调头 2s → 卡车上显示「贩卖成功」徽标 `TradeBadge.ShowText`（工人购买面板样式，1.5s 后脱离淡出）→ 消失 → 重生破损车，暂停冻结）；`ReplayTask` 增加 `taskX/taskY` 解析（任务 `pos` 字段指向对应卡车）。实测 Play 模式：初始破损车 → 触发即换完好车（isBroken 变 false）→ 完好车停小贩前 + 贩卖成功徽标 → 重生破损车；编译 0 error |
+| 2026-08-31 | **任务卡片按任务点区分显示（自进化类1 全流程 / 自进化类2 纯文字）**：`FX/TaskCardBadge.cs` 加**文字模式**（`_textMode = (_taskType == "自进化类2")`）——装甲车任务点（game 17,17/26,17）只显示 TradeBadge 风格状态文字（深色底+黄字）：接受任务→正在修理中→修理成功/失败，Success/Fail 2 回合淡出；宝箱任务点（自进化类1，game 14,14/23,14）走全流程卡片（claim 图/working 视频/unlock 图）。`TaskBadgeManager` 统计共享 working 播放时跳过文字模式卡（不显示视频，避免空转解码）。实测：自进化类2 Working='正在修理中'、Fail='修理失败'（黄字深底、MainTex=null）；自进化类1 Working=视频RT、Fail=unlock_fail 图；编译 0 error |
 | 2026-08-31 | **任务卡片改"仅 Working 视频、其余静态图（各 2 回合）"**：新增 `Assets/Resources/Sprites/claim.png`（Intro 领取，1024²）、`unlock_success.png`（Success 解锁成功，2048×1024）、`unlock_fail.png`（Fail 解锁失败，2048×1024）——图片**从 StreamingAssets 移到 Resources**（`Resources.Load` 同步加载、WebGL 安全，避免异步加载中间态）；`FX/TaskCardBadge.cs`：Intro/Success/Fail 改 `LoadTex` 图片、`_shownUrl=null`，结果图 2 回合后淡出（`_resultStartCur` + `RESULT_ROUNDS=2`，round-based 速度无关）；删除 `BeginClaimVideo`/`BeginResultVideo` 及结果视频相关（`_resultDuration`/`_resultPreloadStarted`/SUCCESS/FAIL_VIDEO）。`FX/TaskBadgeManager.cs`：只建 working 一个共享播放器；共享 working 仅在"有卡在 Intro（预卷）或 Working"时播放、空闲暂停省解码。实测：Working=RenderTexture（视频）、Intro=claim、Success=unlock_success、Fail=unlock_fail；编译 0 error |
 | 2026-08-31 | **K151 装甲车 + 宝箱适配 Built-in 并放入 Resources**：新增 `Resources/Prefabs/K151ArmoredVehicle.prefab`、`GoldChest.prefab`（未来任务点，包装 prefab）。根因与完整解法见 [资源问题与解决方案.md](资源问题与解决方案.md) |
 | 2026-08-25 | **结果视频改为卡片自有播放器（从头播一遍再淡出）+ 卡片放大 2 倍**：① **Success/Fail 视频"前 ~1s 被播两遍"根因**：共享播放器一直在循环，`VideoPlayer.time=0` 的 seek 在播放中是**延迟生效**的（实测设 0 后立刻读回仍是旧值），卡片切到共享 RT 会先显示旧位置画面（若恰好靠近开头即"前 1s 播两遍"）。修复：`BeginResultVideo` 改用**卡片自己的 slot**——Awake 后台 `Prepare` success/fail，结果到来时 `isLooping=false`、`time=0`、从头播一遍，`_resultDuration=视频时长` 播完淡出销毁；`OnVideoLoop` 对结果视频不再重启（仅 working 循环）；Update 在结果播完（`_elapsed>=时长` 或视频到末尾）时不再续播。② 卡片 `CARD_SCALE` 2→4（底板 4×2.4、文字/描边/定位同步放大，用户反馈卡片小看不清视频）。实测：卡片底板 Bg.localScale=(4,2.4,1)；Fail 卡（r33 暂停）自有 fail 播放器 time=0 从头；编译 0 error |

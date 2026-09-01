@@ -7,8 +7,8 @@ using UnityEngine;
 
 public partial class UnitView
 {
-    /// <summary>防御塔(3)血条顶部安全偏移：在 VisualHeight() 塔顶高度之上再抬高，确保清晰悬浮在炮塔正上方。</summary>
-    const float TOWER_HP_TOP_PADDING = 1.1f;
+    /// <summary>防御塔/武器工事血条顶部偏移：在 VisualHeight() 模型顶之上加高，血条 = 模型高 + 此值。</summary>
+    const float TOWER_HP_TOP_PADDING = 1f;
 
     // ── 血条颜色（按阵营/类型恒定，不随血量百分比变色）──
     static readonly Color HP_COLOR_ROBOT      = new Color(1f, 0.788f, 0.302f);    // #FFC94D 机器人黄
@@ -39,6 +39,10 @@ public partial class UnitView
     static readonly Dictionary<int, HpBarStyle> HP_BAR_STYLES = new Dictionary<int, HpBarStyle>
     {
         { 3,  new HpBarStyle { yOffset = TOWER_HP_TOP_PADDING, widthMul = 1.28f, thick = 0.12f } },
+        // 武器工事：血条在各自模型顶上方（yOffset = 模型高 + 顶部留白，随加特林/电磁炮/火箭不同模型高自适应）
+        { 30, new HpBarStyle { yOffset = TOWER_HP_TOP_PADDING, widthMul = 1.28f, thick = 0.12f } },
+        { 31, new HpBarStyle { yOffset = TOWER_HP_TOP_PADDING, widthMul = 1.28f, thick = 0.12f } },
+        { 32, new HpBarStyle { yOffset = TOWER_HP_TOP_PADDING, widthMul = 1.28f, thick = 0.12f } },
         { 4,  new HpBarStyle { yOffset = 2.2f,        widthMul = 1.6f,  thick = 0.10f } },
         { 5,  new HpBarStyle { yFactor = 0.55f,       widthMul = 1f,    thick = 0.05f, depth = 0.025f, yShift = -0.5f } }, // 围墙：深度减半防过厚，血条下移 0.5
         { 7,  new HpBarStyle { yFactor = 0.65f,       widthMul = 1f,    thick = 0.05f } },

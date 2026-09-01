@@ -31,7 +31,7 @@ public class UnitState
 
     public UnitView view;
 
-    public bool IsBeast { get { return type >= 11; } }
+    public bool IsBeast { get { return type >= 11 && type <= 14; } }   // 野兽 11~14；武器工事 30/31/32 不算野兽
     public bool IsTower { get { return type == 3 || type == 30 || type == 31 || type == 32; } }
     public bool IsBuilding { get { return IsTower || type == 4 || type == 5; } }
     public string DisplayName { get { return string.IsNullOrEmpty(name) ? "单位" + id : name; } }
@@ -51,6 +51,8 @@ public class TeamStat
     public int taskWrong;       // 答错题数（对应 replay invalidTaskCount）
     public bool hasActiveTask;  // 当前是否已接取任务（task.taskType 非空）
     public int baseHp = -1;
+    public int task1Done, task1Failed, task1Total;   // 自进化类1 allTaskInfo [完成, 失败, 总数]
+    public int task2Done, task2Failed, task2Total;   // 自进化类2
 }
 
 /// <summary>表现层宿主接口：状态引擎把"事件"汇报给播放器，由播放器做特效/UI。
@@ -322,6 +324,8 @@ public class StateEngine
             st.tasks = t.completeTaskCount;
             st.taskCorrect = t.completeTaskCount;
             st.taskWrong = t.invalidTaskCount;
+            st.task1Done = t.task1Done; st.task1Failed = t.task1Failed; st.task1Total = t.task1Total;
+            st.task2Done = t.task2Done; st.task2Failed = t.task2Failed; st.task2Total = t.task2Total;
             st.hasActiveTask = t.task != null && !string.IsNullOrEmpty(t.task.taskType);
             foreach (var r in t.roles)
                 if (r.roleType == 4) { st.baseHp = r.health; break; }

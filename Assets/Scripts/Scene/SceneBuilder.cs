@@ -460,7 +460,7 @@ public static class SceneBuilder
         string path = null;
         float scale = 1f;
         if (t == 40 || t == 42) path = "Prefabs/GoldChest";                 // 宝箱
-        else if (t == 41 || t == 43) { path = "Prefabs/K151ArmoredVehicle"; scale = VEHICLE_SCALE; } // 装甲车
+        else if (t == 41 || t == 43) { path = "Prefabs/broken_K151ArmoredVehicle"; scale = VEHICLE_SCALE; } // 装甲车（初始/重生是破损形态）
         if (path == null) return;
 
         var prefab = Resources.Load<GameObject>(path);
@@ -471,6 +471,17 @@ public static class SceneBuilder
         go.transform.position = c;                 // c 已含 0.01f 贴地
         go.transform.rotation = Quaternion.identity;
         if (scale != 1f) go.transform.localScale = new Vector3(scale, scale, scale);
+
+        // 记录 game 坐标（逆 CellToWorld：c=(gameX-ox,·,oz-gameY)，ox=(w-1)/2=20，oz=(h-1)/2=15.5），
+        // 供 MissionVehicleDriver 按任务 pos 定位；装甲车任务完成 → 修复成完好车开向小贩 → 重生破损车
+        bool isVeh = (t == 41 || t == 43);
+        var mp = go.AddComponent<MissionPoint>();
+        mp.gameX = Mathf.RoundToInt(c.x + 20f);
+        mp.gameY = Mathf.RoundToInt(c.z + 15.5f);
+        mp.isVehicle = isVeh;
+        mp.isBroken = isVeh;   // 装甲车初始是破损形态
+        mp.prefabPath = path;                                  // 破损车（初始+重生）
+        mp.workingPrefabPath = isVeh ? "Prefabs/K151ArmoredVehicle" : "";  // 修复后的完好车
 
         // 装甲车车头朝向小贩（水平方向，忽略 Y）；宝箱保持 +Z(北)
         if (t == 41 || t == 43)

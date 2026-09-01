@@ -23,7 +23,7 @@
 | `map`   | `object`   | 地图配置信息                                                 |
 | `roles` | `object`   | 初始角色配置，key 为角色名（`"gatling"`、`"railgun"`、`"rocket"`、`"station"`、`"wall"`、`"worker"`、`"pioneer"`、`"challengerTaskPoint1"`、`"challengerTaskPoint2"`、`"defenderTaskPoint1"`、`"defenderTaskPoint2"`、`"vendor"`、`"weaponShop"`、`"blackBear"`、`"skeletonMage"`、`"deathWarrior"`、`"cavalry"`），value 为该角色的属性对象；6 个 NPC（challengerTaskPoint1/challengerTaskPoint2/defenderTaskPoint1/defenderTaskPoint2/vendor/weaponShop）只有 `mapType` 字段，**没有 `health`/`attackPower` 字段**；野兽（blackBear/skeletonMage/deathWarrior/cavalry）有 `health`/`attackPower`/`mapType`；建筑（gatling/railgun/rocket/station/wall）额外含 `level`=1（起始等级=升级次数+1）；英雄/野兽 `level` 默认 0 不输出 |
 | `teams` | `object[]` | 队伍列表，每个队伍包含 `roles`、`task`、`allTaskInfo` 等，结构见 [2.3 teams](#24-teams-队伍) |
-| `buildZones` | `object` | 各队伍建造分区（v6.2），key 为队伍类型 `"challenger"`/`"defender"`，结构见 [1.4 buildZones](#14-buildzones-建造分区) |
+| `vendorShopPriceChange` | `object` / `null` | 小贩矿石回收价波动窗口（推理类【官方消息】影响），含 `date.startDay` / `date.stopDay`，即价格波动开始/结束的天数；无波动时为 `null`。示例 `{"date": {"startDay": 3, "stopDay": 4}}` |
 
 ### 1.2 `map` 对象
 
@@ -61,31 +61,7 @@
 | `24` | 铁矿 (iron)                                       | 可采集资源点   |
 | `25` | 铜矿 (copper)                                     | 可采集资源点   |
 
-### 1.4 `buildZones` 建造分区（v6.2）
-
-围墙与武器工事的可建区域约束（矩形边界，含端点）：
-
-| 字段       | 类型      | 说明                                                         |
-| ---------- | --------- | ------------------------------------------------------------ |
-| `wallRing` | `object`  | 以基地为中心 6×6 正方形外框 `{minX, maxX, minY, maxY}`，**围墙仅可建在边框格上**（共 20 格） |
-| `towerZone`| `object`  | 该正方形的严格内部 4×4 矩形 `{minX, maxX, minY, maxY}`，**武器工事仅可建在此区域内**（基地占地 2×2 除外，实际可建 12 格） |
-
-当前地图的取值：挑战方 `wallRing = {minX:7, minY:19, maxX:12, maxY:24}`、`towerZone = {minX:8, minY:20, maxX:11, maxY:23}`；防守方 `wallRing = {minX:28, minY:7, maxX:33, maxY:12}`、`towerZone = {minX:29, minY:8, maxX:32, maxY:11}`。
-
-```json
-"buildZones": {
-  "challenger": {
-    "wallRing": {"minX": 7, "maxX": 12, "minY": 19, "maxY": 24},
-    "towerZone": {"minX": 8, "maxX": 11, "minY": 20, "maxY": 23}
-  },
-  "defender": {
-    "wallRing": {"minX": 28, "maxX": 33, "minY": 7, "maxY": 12},
-    "towerZone": {"minX": 29, "maxX": 32, "minY": 8, "maxY": 11}
-  }
-}
-```
-
-### 1.5 `start` 完整 JSON 样例
+### 1.4 `start` 完整 JSON 样例
 
 ```json
 {
@@ -121,16 +97,6 @@
       "attackPower": 0,
     }
   },
-  "buildZones": {
-    "challenger": {
-      "wallRing": {"minX": 7, "maxX": 12, "minY": 19, "maxY": 24},
-      "towerZone": {"minX": 8, "maxX": 11, "minY": 20, "maxY": 23}
-    },
-    "defender": {
-      "wallRing": {"minX": 28, "maxX": 33, "minY": 7, "maxY": 12},
-      "towerZone": {"minX": 29, "maxX": 32, "minY": 8, "maxY": 11}
-    }
-  },
   "teams": [
     {
       "type": "challenger",
@@ -148,20 +114,15 @@
         "taskType": "",
         "description": "",
         "shortcut": "",
-        "level": "",
-        "answer": "",
         "reward": 0,
         "isTaskComplete": false,
-        "taskStatus": [],
         "roundCost": 0,
-        "pos": null
+        "pos": null,
+        "passRate": 0.0
       },
       "allTaskInfo": {
-        "ragTask": [0],
-        "dbTask": [0, 0, 0],
-        "codeReviewTask": [0, 0],
-        "codeGenerateTask": [0, 0, 0],
-        "osTask": [0, 0, 0]
+        "selfEvolutionTask1": [0, 0, 3],
+        "selfEvolutionTask2": [0, 0, 3]
       },
       "roles": [
         {
@@ -195,20 +156,15 @@
         "taskType": "",
         "description": "",
         "shortcut": "",
-        "level": "",
-        "answer": "",
         "reward": 0,
         "isTaskComplete": false,
-        "taskStatus": [],
         "roundCost": 0,
-        "pos": null
+        "pos": null,
+        "passRate": 0.0
       },
       "allTaskInfo": {
-        "ragTask": [0],
-        "dbTask": [0, 0, 0],
-        "codeReviewTask": [0, 0],
-        "codeGenerateTask": [0, 0, 0],
-        "osTask": [0, 0, 0]
+        "selfEvolutionTask1": [0, 0, 3],
+        "selfEvolutionTask2": [0, 0, 3]
       },
       "roles": [
         {
@@ -256,6 +212,7 @@
 | `resources` | `object[]` | 地图上的资源点列表      |
 | `npc`       | `object[]` | 中立 NPC 位置列表，元素为 `{"pos": {"x","y"}, "roleName": "challengerTaskPoint1"|"challengerTaskPoint2"|"defenderTaskPoint1"|"defenderTaskPoint2"|"vendor"|"weaponShop"}`，固定 6 个（4 任务点 + vendor + weaponShop） |
 | `news`      | `object[]` | 本回合新闻/事件通知列表 |
+| `vendorShopList` | `object[]` | 小贩矿石回收价列表，元素为 `{"name": "stone"\|"iron"\|"copper", "price": integer}`（与选手 `PlayerRequest` 同源 `WorldNewsManager.getVendorShopList`），固定 3 项；`price` 受世界新闻波动（如铁矿紧缺时涨至 4 倍） |
 | `teams`     | `object[]` | 参与对局的队伍列表      |
 
 ### 2.2 `resources` 资源点
@@ -294,26 +251,28 @@
 
 | 字段             | 类型              | 说明                                         |
 | ---------------- | ----------------- | -------------------------------------------- |
-| `taskType`       | `string`          | 任务类型，如 `"问题检视类"`                  |
+| `taskType`       | `string`          | 任务类型，第10届任务点取值 `"自进化类1"` / `"自进化类2"`（推理类、长上下文类经世界新闻下发，不在此字段） |
 | `description`    | `string`          | 任务详细描述                                 |
 | `shortcut`       | `string`          | 任务简述/快捷提示                            |
-| `level`          | `string`          | 任务难度等级，如 `"l3"`                      |
-| `answer`         | `string`          | 正确答案（JSON 字符串）                      |
 | `reward`         | `integer`         | 任务奖励分数                                 |
 | `isTaskComplete` | `boolean`         | 任务是否已完成                               |
-| `taskStatus`     | `array`           | 任务状态列表                                 |
 | `roundCost`      | `integer`         | 已消耗回合数                                 |
 | `pos`            | `object` / `null` | 任务所在坐标 `{"x", "y"}`，无任务时为 `null` |
+| `passRate`       | `number`          | 当前最高通过率 `[0,1]`（= `RoleTask.answerMaxPassRate`），跟踪部分答对进度；`0`=未答对/未答，`1`=完全答对。无激活任务时为 `0` |
 
-### 2.6 `allTaskInfo` 任务进度（待定）
+### 2.6 `allTaskInfo` 任务进度
 
-| 字段               | 类型         | 说明                            |
-| ------------------ | ------------ | ------------------------------- |
-| `ragTask`          | `integer[]`  | RAG 任务进度                    |
-| `dbTask`           | `integer[3]` | 数据库任务进度                  |
-| `codeReviewTask`   | `integer[2]` | 代码审查任务进度 `[剩余, 总数]` |
-| `codeGenerateTask` | `integer[3]` | 代码生成任务进度（实际为 3 个元素） |
-| `osTask`           | `integer[3]` | OS/系统任务进度                 |
+第10届任务点仅下发自进化类任务（`TaskType` = `自进化类1` / `自进化类2`），故 `allTaskInfo` 对齐这两个类型，每类一个三元 `[已完成数, 失效数, 总数]`。推理类 / 长上下文类任务经世界新闻下发，不在此字段内。
+
+| 字段                 | 类型          | 说明                                      |
+| -------------------- | ------------- | ----------------------------------------- |
+| `selfEvolutionTask1` | `integer[3]`  | 自进化类1 进度 `[已完成数, 失效数, 总数]` |
+| `selfEvolutionTask2` | `integer[3]`  | 自进化类2 进度 `[已完成数, 失效数, 总数]` |
+
+- `总数` = 该任务官下发的全部任务数，开局固定、不随轮换变化；
+- `已完成数` = 其中已正确提交答案完成的任务数，实时累计；
+- `失效数` = 因超时/放弃被消耗（v7.2 消耗模型）而未完成的任务数，实时累计（与已完成数互斥）；
+- 无对应任务类型时，对应 key 仍以 `[0, 0, 0]` 占位出现。
 
 ### 2.7 `roles` 角色
 
@@ -382,6 +341,11 @@
     { "pos": {"x": 30, "y": 20}, "resName": "铜"}
   ],
   "news": [],
+  "vendorShopList": [
+    {"name": "stone", "price": 1},
+    {"name": "iron", "price": 3},
+    {"name": "copper", "price": 5}
+  ],
   "teams": [
     {
       "type": "challenger",
@@ -399,20 +363,15 @@
         "taskType": "",
         "description": "",
         "shortcut": "",
-        "level": "",
-        "answer": "",
         "reward": 0,
         "isTaskComplete": false,
-        "taskStatus": [],
         "roundCost": 0,
-        "pos": null
+        "pos": null,
+        "passRate": 0.0
       },
       "allTaskInfo": {
-        "ragTask": [0],
-        "dbTask": [0, 0, 0],
-        "codeReviewTask": [0, 0],
-        "codeGenerateTask": [0, 0, 0],
-        "osTask": [0, 0, 0]
+        "selfEvolutionTask1": [0, 0, 3],
+        "selfEvolutionTask2": [0, 0, 3]
       },
       "roles": [
         {

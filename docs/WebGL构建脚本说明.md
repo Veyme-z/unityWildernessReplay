@@ -68,3 +68,15 @@
 ## 六、构建产物与 git
 
 `Builds/WildernessReplay_WebGL_*/` 已在 `.gitignore` 中排除（`/Builds/WildernessReplay_WebGL_*/`），**不会**被 `git add` 提交。
+
+## 七、包体积精简（GitHub 100MB 单文件上限）
+
+`data.unityweb` 超过 GitHub 单文件 100MB 上限时，按下面思路处理（2026-08-31 已执行一次：**117M → 91M**）：
+
+- **大贴图 Crunch 压缩（保持分辨率，画质几乎无损）**：给 `Assets/Resources/SciFiHeroPBR/Textures/` 下 9 张 4096² 贴图加了 **WebGL 平台覆写**（只在 WebGL 生效，桌面/编辑器完全不变）：`maxTextureSize=4096` + `crunchedCompression=true`，format 留 Automatic（Unity 自动选 DXT5/DXT1/法线专用格式）。对应 `.meta` 里出现 `buildTarget: WebGL` + `crunchedCompression: 1`。这些覆写已固化在 `.meta`，以后构建都会带上。
+- **删除了用不到的 SRP zip**：`Assets/Resources/SciFiHeroPBR/SRP/`（URP/HDRP 管线包共 174M，本项目 Built-in 管线用不到），已从 git 删除（历史可找回）。
+- **Raygeas 不在包里**：不在 `Resources/` 下且场景/脚本均未引用，构建自动排除，压缩它对包体积无帮助，只是仓库占用。
+- **移出没用到的 SciFiHeroPBR 资源（Resources 下会被无条件全打包）**：运行时实际只加载 `SciFiHeroPBR/Prefabs/AssaultRifle01` 和 `SciFiHeroPBR/Materials/PBRMaskTint`。用 `AssetDatabase.GetDependencies(预制体, true)` 算出完整依赖闭包后，把 100 个未引用的文件（其他 17 个武器预制体、5 个多余材质、65 个非 `_ar` 动画变体、3 个手/霰弹/狙控制器、2 个网格、7 个演示场景，共 70M）移到 `Assets/Unused/SciFiHeroPBR/`（连同 `.meta` 一起移，GUID 保留，引用不丢）。不在 Resources 里且未被引用 → 不打进包。**注意**：移到哪都会跟着 GUID 引用被打包的，只有真正没被引用的才省得掉。
+
+> 整体效果：`data.unityweb` **117M → 91M（Crunch）→ 81M（移出死重）**。
+> 若之后想更小（更稳地避开 100MB / 加快首屏下载），把 WebGL 覆写的 `maxTextureSize` 从 4096 降到 2048 即可（预计 data → ~50-60M，回放视角下视觉差异极小）。贴图被重新导入弄丢覆写时，在 Inspector 里给 WebGL 平台勾选 Crunch 压缩即可恢复。

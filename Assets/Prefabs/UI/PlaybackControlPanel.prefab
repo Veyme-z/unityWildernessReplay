@@ -36,7 +36,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 10, y: -88}
-  m_SizeDelta: {x: 220, y: 20}
+  m_SizeDelta: {x: 220, y: 34}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &8102088415420564553
 CanvasRenderer:
@@ -245,6 +245,7 @@ MonoBehaviour:
   _btnAuto: {fileID: 0}
   _directorStatus: {fileID: 0}
   _showStatsBtn: {fileID: 0}
+  _volumeBtn: {fileID: 0}
 --- !u!1 &366102835157512286
 GameObject:
   m_ObjectHideFlags: 0
@@ -370,8 +371,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 10, y: -96}
-  m_SizeDelta: {x: 320, y: 56}
+  m_AnchoredPosition: {x: 10, y: -130}
+  m_SizeDelta: {x: 320, y: 34}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &7963823729771527917
 CanvasRenderer:
@@ -408,11 +409,11 @@ MonoBehaviour:
     m_BestFit: 0
     m_MinSize: 10
     m_MaxSize: 40
-    m_Alignment: 3
+    m_Alignment: 0
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 0
+    m_VerticalOverflow: 1
     m_LineSpacing: 1
   m_Text: 
 --- !u!114 &3402188730786377730
@@ -2212,7 +2213,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 0}
   m_AnchoredPosition: {x: 0, y: 118}
-  m_SizeDelta: {x: 720, y: 156}
+  m_SizeDelta: {x: 720, y: 180}
   m_Pivot: {x: 0.5, y: 0}
 --- !u!222 &4768359760772680715
 CanvasRenderer:
@@ -2242,7 +2243,7 @@ MonoBehaviour:
   m_ChildAlignment: 4
   m_Spacing: 20
   m_ChildForceExpandWidth: 0
-  m_ChildForceExpandHeight: 0
+  m_ChildForceExpandHeight: 1
   m_ChildControlWidth: 1
   m_ChildControlHeight: 1
   m_ChildScaleWidth: 0
@@ -2965,8 +2966,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 10, y: -96}
-  m_SizeDelta: {x: 320, y: 56}
+  m_AnchoredPosition: {x: 10, y: -130}
+  m_SizeDelta: {x: 320, y: 34}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &6628516279629308151
 CanvasRenderer:
@@ -3003,11 +3004,11 @@ MonoBehaviour:
     m_BestFit: 0
     m_MinSize: 10
     m_MaxSize: 40
-    m_Alignment: 3
+    m_Alignment: 0
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 0
+    m_VerticalOverflow: 1
     m_LineSpacing: 1
   m_Text: 
 --- !u!114 &7737103288613607291
@@ -4183,7 +4184,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 10, y: -88}
-  m_SizeDelta: {x: 220, y: 20}
+  m_SizeDelta: {x: 220, y: 34}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &8114757168305351648
 CanvasRenderer:

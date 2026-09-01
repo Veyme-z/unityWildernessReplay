@@ -16,6 +16,9 @@ public static class ItemNameCn
             case "stone":  return "石头";
             case "wall":   return "围墙";
             case "tower":  return "防御塔";
+            case "gatling": return "加特林炮台";
+            case "railgun": return "电磁狙击炮";
+            case "rocket":  return "火箭发射台";
             case "medicine": return "药品";
             case "bomb": return "炸弹";
             case "dizzyweapon": return "眩晕法宝";

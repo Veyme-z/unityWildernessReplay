@@ -38,6 +38,7 @@ public class TaskCardBadge : MonoBehaviour
     const string SUCCESS_TEX  = "Sprites/unlock_success"; // Success 解锁成功图（密码正确）
     const string FAIL_TEX     = "Sprites/unlock_fail";    // Fail 解锁失败图（密码错误）
     public const string WORKING_VIDEO = "TaskVideos/working.mp4";   // Working 破解中视频（唯一视频，StreamingAssets 下）
+    public const string REPAIR_TASK_TYPE = "自进化类2";   // 装甲车任务点（game 17,17/26,17）→ 只显示文字（TradeBadge 风格）
 
     const float FADE_TIME = 0.2f;           // 淡入/淡出时长
     const float BOUNCE_TIME = 0.3f;         // Success 弹跳时长
@@ -83,6 +84,8 @@ public class TaskCardBadge : MonoBehaviour
     readonly Dictionary<string, VideoSlot> _videos = new Dictionary<string, VideoSlot>();
     string _shownUrl;                           // 当前底板显示的视频 url（null=图片/纯色）
     bool _fallback;                             // 当前状态处于"资源加载失败 → 纯色+文字"降级
+    bool _textMode;                             // 装甲车任务点（自进化类2）：只显示状态文字（TradeBadge 风格），不走图片/视频
+    Color _textColor = Color.white;             // 文字颜色（文字模式=TradeBadge 黄字；图片/视频模式=白）
 
     public bool IsFinished { get { return _isFinished; } }
     public TaskCardState CurrentState { get { return _state; } }
@@ -176,6 +179,7 @@ public class TaskCardBadge : MonoBehaviour
     public void SetState(TaskCardState state, string taskType)
     {
         if (!string.IsNullOrEmpty(taskType)) _taskType = taskType;
+        _textMode = (_taskType == REPAIR_TASK_TYPE);   // 装甲车任务点 → 只显示文字
 
         // Intro 延长展示：数据上 roundCost==0 仅 1 回合，数据第 2 回合已变 Working，
         // 但卡片继续停留 Intro 到满 INTRO_MIN_ROUNDS 回合（图片一闪而过问题）。
@@ -215,6 +219,21 @@ public class TaskCardBadge : MonoBehaviour
     void ApplyStateVisuals(TaskCardState state)
     {
         _fallback = false;
+
+        // 装甲车任务点（自进化类2）：只显示状态文字（TradeBadge 风格：深色底 + 黄字），不走图片/视频
+        if (_textMode)
+        {
+            switch (state)
+            {
+                case TaskCardState.Intro: ShowText("接受任务"); break;
+                case TaskCardState.Working: ShowText("正在修理中"); break;
+                case TaskCardState.Success: _resultStartCur = _player != null ? _player.cur : -1; ShowText("修理成功"); break;
+                case TaskCardState.Fail:    _resultStartCur = _player != null ? _player.cur : -1; ShowText("修理失败"); break;
+            }
+            ApplyAlpha(1f);
+            return;
+        }
+
         switch (state)
         {
             case TaskCardState.Intro:
@@ -243,6 +262,28 @@ public class TaskCardBadge : MonoBehaviour
         // 仅"资源加载失败 → 纯色+文字"降级态（_fallback）显示文字。
         if (_txtGo != null) _txtGo.SetActive(_fallback);
         ApplyAlpha(1f);
+    }
+
+    /// <summary>文字模式（装甲车任务点）：小而常驻的 TradeBadge 风格弹窗文字（深色半透明底 + 黄字），
+    /// 挂在单位头顶，无图无视频；底板按文字长度/字高自适应。状态文字：接受任务 / 正在修理中 / 修理成功 / 修理失败。</summary>
+    void ShowText(string text)
+    {
+        if (_borderRend != null) _borderRend.gameObject.SetActive(false);   // 文字模式无金黄描边
+        transform.localScale = Vector3.one;              // 不整体缩放，底板/文字各自自适应
+        transform.localPosition = new Vector3(0f, 1.8f, 0f);   // 单位头顶（同 ShowBuild）
+        _stateColor = new Color(0f, 0f, 0f, 0.5f);      // 深色半透明底
+        _textColor = new Color(1f, 0.84f, 0.25f);       // TradeBadge 黄字
+        _shownUrl = null;
+        SetMainTexture(null);                           // 无图无视频（纯色底）
+        if (_tm != null) _tm.characterSize = 0.06f;     // 可读字号（实测 characterSize=0.05 时 CJK 全宽≈0.2、字高≈0.29 → 0.06 时全宽≈0.24、字高≈0.35）
+        SetText(text);
+        if (_txtGo != null) _txtGo.SetActive(true);
+        // 底板自适应文字宽度/高度（同 TradeBadge：CJK 全宽 ~0.24、ASCII 半宽 ~0.12，留白 0.3）
+        float full = 0f, half = 0f;
+        foreach (char c in text) { if (c > 0x7F) full++; else half++; }
+        float w = Mathf.Max(0.7f, full * 0.24f + half * 0.12f + 0.3f);
+        float h = 0.43f;                                // 字高 0.35 + 上下留白
+        if (_bgRend != null) _bgRend.transform.localScale = new Vector3(w, h, 1f);
     }
 
     /// <summary>设置底板主纹理（null 恢复纯色）。走 MaterialPropertyBlock，不污染共享材质。
@@ -441,11 +482,15 @@ public class TaskCardBadge : MonoBehaviour
         if (shouldPlay) vp.Play();
     }
 
-    /// <summary>当前状态应显示的视频 url（仅 Working 有视频；Intro/Success/Fail 为静态图 → null）。</summary>
+    /// <summary>当前状态应显示的视频 url（仅 Working 有视频；文字模式/Intro/Success/Fail → null）。</summary>
     string TargetDisplayUrl()
     {
+        if (_textMode) return null;
         return _state == TaskCardState.Working ? WORKING_VIDEO : null;
     }
+
+    /// <summary>文字模式（装甲车任务点）标记：管理器据此不把文字卡计入 working 播放统计（省解码）。</summary>
+    public bool IsTextMode { get { return _textMode; } }
 
     /// <summary>由 VideoPlayer 找所属 slot（回调参数是具体 player）。</summary>
     VideoSlot FindSlot(VideoPlayer vp)
@@ -630,10 +675,12 @@ public class TaskCardBadge : MonoBehaviour
     {
         if (_bgRend != null)
         {
-            _mpb.SetColor("_Color", new Color(_stateColor.r, _stateColor.g, _stateColor.b, a));
+            // 文字模式：底色用 _stateColor.a（0.5 半透明）并随淡出缩放；其余状态用淡出 alpha
+            float bgA = _textMode ? _stateColor.a * a : a;
+            _mpb.SetColor("_Color", new Color(_stateColor.r, _stateColor.g, _stateColor.b, bgA));
             _bgRend.SetPropertyBlock(_mpb);
         }
-        if (_tm != null) _tm.color = new Color(1f, 1f, 1f, a);
+        if (_tm != null) _tm.color = new Color(_textColor.r, _textColor.g, _textColor.b, a);   // 文字模式=黄字，其余=白
         if (_borderRend != null && _borderMpb != null)
         {
             _borderMpb.SetColor("_Color", new Color(1f, 215f / 255f, 0f, a));   // 金黄 #FFD700 + alpha

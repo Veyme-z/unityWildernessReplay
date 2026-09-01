@@ -1,14 +1,14 @@
 # HUD / UI 结构审计
 
-> 结论先行：HUD **不是纯代码生成，也不是场景里摆好的 Canvas**，而是 **「场景里的 `PrefabRefs` 组件按 GUID 连线 4 个 UI Prefab → 各 Controller.Create() 实例化 → 运行时由代码回填文本/颜色」** 的实现。**纯代码兜底 `CreateFromCode()` 已全部删除**，Prefab 缺失时 `Create()` 直接 `LogError` 并返回 null。
+> 结论先行：HUD **不是纯代码生成，也不是场景里摆好的 Canvas**，而是 **「场景里的 `PrefabRefs` 组件按 GUID 连线 6 个 UI Prefab → 各 Controller.Create() 实例化 → 运行时由代码回填文本/颜色」** 的实现。**纯代码兜底 `CreateFromCode()` 已全部删除**，Prefab 缺失时 `Create()` 直接 `LogError` 并返回 null。
 
 ---
 
 ## 0. 关键事实
 
 - 启动场景 = `Assets/unknow.unity`（EditorBuildSettings 为空，编辑器当前打开哪个就起哪个）。
-- 场景根节点 `PrefabRefs`（`MonoBehaviour`）序列化了 4 个 UI Prefab 的 GUID；`PrefabRefs.Instance` 单例在 `Awake()` 里 `FindObjectOfType` 抓到它。
-- 4 个 UI Prefab 真实路径（**不在 Resources 下**，靠 GUID 引用，不是 `Resources.Load`）：
+- 场景根节点 `PrefabRefs`（`MonoBehaviour`）序列化了 6 个 UI Prefab 的 GUID；`PrefabRefs.Instance` 单例在 `Awake()` 里 `FindObjectOfType` 抓到它。
+- 6 个 UI Prefab 真实路径（**不在 Resources 下**，靠 GUID 引用，不是 `Resources.Load`）：
 
 | Prefab | 路径 | 实例化入口 |
 |---|---|---|
@@ -16,6 +16,8 @@
 | 事件日志 | `Assets/Prefabs/UI/EventLogPanel.prefab` | `EventLogPanelController.Create` |
 | 底部面板 | `Assets/Prefabs/UI/PlaybackControlPanel.prefab` | `PlaybackControlPanelController.Create` |
 | 结算 | `Assets/Prefabs/UI/SettlementPanel.prefab` | `SettlementPanelController.Create` |
+| 推理类任务 | `Assets/Prefabs/UI/TaskPanelReasoning.prefab` | `TaskPanelController.Create(player, TaskPanelKind.Reasoning)` |
+| 长上下文任务 | `Assets/Prefabs/UI/TaskPanelLongContext.prefab` | `TaskPanelController.Create(player, TaskPanelKind.LongContext)` |
 
 - `PrefabRefs` 里 `baseBuilding/tower/wall/worker/pioneer/officer/vendor` 等字段均为 `{fileID:0}`（空），单位/建筑走 `UnitView` 的 `Resources.Load`，**与 UI 无关**。
 - 每个 Prefab 根都是一个**独立 Canvas**（ScreenSpaceOverlay，排序 200/210/220/500），互不嵌套。
@@ -33,6 +35,12 @@ HudPanel(Canvas, 200)                     ── 顶部
 
 EventLogCanvas/…Panel(Canvas, 210)        ── 左侧日志（非本次重点）
 └─ Panel ─ ScrollView ─ Content(Text)
+
+TaskPanelReasoning(Canvas, 215)           ── 右上角：推理类任务（官方消息）
+└─ Panel(300×120, (-10,-10)) ─ Title(【推理类任务】) + Body(官方消息正文)
+TaskPanelLongContext(Canvas, 216)         ── 右上角：长上下文任务（民间传闻）
+└─ Panel(300×106, (-10,-140)) ─ Title(【长上下文任务】) + Body(民间传闻正文)
+                                        （折线图 PriceChartCard(Canvas 211) 在 (-10,-256) 340×240，三面板右上角垂直堆叠不重叠；X 轴显示天数、Y 轴显示具体数值）
 
 PlaybackControlPanel(Canvas, 220)         ── 底部
 ├─ TeamBar(HLG) ─ RedCard ─ RN/RH/RG/RS/RTw/RWl/RMm/RTk/RBg
@@ -58,7 +66,7 @@ SettlementPanel(Canvas, 500)              ── 结算（游戏结束才出现�
 | 6 | 总积分 | RS/BS | Prefab |
 | 7 | 基地 HP | RH/BH | Prefab |
 | 8 | **角色数量** | RMm/BMm（Sync 填"人数 n/3"） | Prefab |
-| 9 | 任务/背包摘要 | RTk/RBg、BTk/BBg（Sync 填"任务 对x错y"/"背包 …"） | Prefab |
+| 9 | 任务/背包摘要 | RTk/RBg、BTk/BBg（Sync 填 allTaskInfo 两行"自进化1 完成X 失败Y 共Z / 自进化2 完成X 失败Y 共Z" / "背包 …"） | Prefab |
 | 10 | 播放进度/总回合 | RT + Slider | Prefab |
 | 11 | 播放控制+镜头按钮 | ControlBar（含 CamFree「自由」） | Prefab + 代码动态加 2 个导演按钮 |
 
@@ -72,6 +80,8 @@ SettlementPanel(Canvas, 500)              ── 结算（游戏结束才出现�
 | 底部 | `PlaybackControlPanelController.Create` | 否 | 是（全部队数据+回合文本） | 部分（Play/Sp1/Sp2/Manual/Auto 按钮底 Image 色） | 队名/金币/积分/HP 文本被覆盖；队标签颜色、字号、坐标保留 |
 | 结算 | `SettlementPanelController.Create` | 否 | 是（Setup 填 5 个文本） | 否 | 仅文本覆盖，样式全来自 Prefab |
 | 事件日志 | `EventLogPanelController.Create` | 否 | 是（AddEventLog 拼字符串） | 否 | 仅文本覆盖 |
+| 推理类任务 | `TaskPanelController.Create(Reasoning)` | 否 | 是（Body 填官方消息） | 否 | 仅正文覆盖，标题/颜色/布局来自 Prefab |
+| 长上下文任务 | `TaskPanelController.Create(LongContext)` | 否 | 是（Body 填民间传闻） | 否 | 仅正文覆盖，标题/颜色/布局来自 Prefab |
 
 **冲突点（同一属性 Prefab+代码都管）：**
 - `HudController`：`dayLabel.color` / `phaseLabel.color` 由代码 `_currentDayColor/_currentPhaseColor` Lerp 覆盖，Prefab 里设的 Day 橙/Phase 金只作初始值。
@@ -104,7 +114,7 @@ data.finish.players[]    → ShowSettlement        → SettlementPanelController
 
 **未展示的数据（改动时留意）：**
 - `TeamStat.baseHp` 被计算但**从不显示**（面板 HP 直接读 `engine.units[base].hp`）。
-- `completeTaskCount` 只在事件日志提示，`invalidTaskCount` 解析后**完全未用**。
+- `completeTaskCount` 只在事件日志提示；`invalidTaskCount` 解析后未在面板展示（任务对错改由 allTaskInfo 驱动）。
 - `TeamStat.taskText` 被拼装但**无 UI 消费**。
 
 ---
@@ -183,7 +193,7 @@ ReplayEntry.LoadReplay() ─▶ PlaybackControlPanelController.Create(player)
 
 **运行时状态：**
 - `Update()` 每帧调 `Sync()`（轮询式直读 `player.engine` 现场，非事件驱动）；拖 Slider → `SetPlaying(false)+JumpTo`，下一帧自然刷新。
-- `Sync()` 写：队名/基地 HP/金币/积分/围墙/防御塔/**人数**/任务对错/背包 + 回合数 + Slider.max + Play/Speed 按钮底色。
+- `Sync()` 写：队名/基地 HP/金币/积分/围墙/防御塔/**人数**/任务进度（allTaskInfo 自进化类1/2 每类"完成X 失败Y 共Z"两行）/背包 + 回合数 + Slider.max + Play/Speed 按钮底色。
 - `Update()` 还管：Auto 模式呼吸灯（DirectorStatus）与「手动/自动」按钮高亮。
 - 镜头按钮 → `ReplayCameraRig.SetCameraMode("global"/"teamA"/"teamB"/"free")`；键盘 1/2/3/4 同源（见 ReplayCameraRig.Update）。自由 = "free"（左键平移、Alt/Ctrl+左键旋转、滚轮缩放）。
 
@@ -191,7 +201,7 @@ ReplayEntry.LoadReplay() ─▶ PlaybackControlPanelController.Create(player)
 
 | 项目 | 归属 |
 |---|---|
-| 布局 / 面板尺寸 / 坐标 | Prefab（代码不覆盖；ControlBar 680×50，TeamBar 与 ControlBar 用 HorizontalLayoutGroup 自动排布） |
+| 布局 / 面板尺寸 / 坐标 | Prefab（代码不覆盖；ControlBar 680×50，TeamBar 与 ControlBar 用 HorizontalLayoutGroup 自动排布；2026-09-01 任务行改两行后 TeamBar 720×180 + HLG `childForceExpandHeight=true`（卡片拉伸到全高覆盖内容），RTk/BTk 34px（两行），RBg/BBg 34px @ y=-130（两行）+ 顶部对齐 + vOverflow=Overflow 防背包裁剪；卡片 340×174 刚好覆盖内容，底部留白 ~10px） |
 | 静态颜色（队名红蓝/金币金/积分白）、字号、按钮标签（播放/重播/1x/2x/全局/蓝方/红方/自由） | Prefab |
 | 全部文本内容 | 代码 `Sync()` / `Update()` 运行时回填 |
 | Play/Sp1/Sp2/手动/自动 按钮底色 | 代码覆盖（播放中蓝/黄、倍速高亮、导播模式高亮） |
@@ -204,3 +214,41 @@ ReplayEntry.LoadReplay() ─▶ PlaybackControlPanelController.Create(player)
 - **移除全部 emoji**：`PlaybackControlPanelController`/`SettlementPanelController`/`EventLogPanelController` 代码与 `SettlementPanel.prefab`/`EventLogPanel.prefab` 全部改纯中文文本。
 - **删除旧资产**：`Assets/Prefabs/UI/Legacy/`（`HudPanel_Legacy`、`PlaybackControlPanel_Legacy` 两个无引用旧 prefab）。
 - **删除死代码**：Hud/EventLog/Playback/Settlement 4 个 Controller 的 `CreateFromCode()` 纯代码兜底及不再使用的 helper（Create 改缺 prefab 时报错；调用处已补 null 保护）。
+
+---
+
+## 9. 任务面板（推理类 / 长上下文）实现明细
+
+> 2026-09-01 新增。原 `TaskPanelController` 是**唯一纯代码 UI 面板**（右上角 Canvas + 占位【官方消息】假新闻轮换），本次改为两个 prefab 驱动的面板，并接入真实 replay 数据。
+
+**创建链（prefab 是唯一路径）：**
+
+```
+ReplayEntry.LoadReplay() ─▶ TaskPanelController.Create(player, TaskPanelKind.Reasoning)
+                          ─▶ TaskPanelController.Create(player, TaskPanelKind.LongContext)
+  ├─ PrefabRefs.Instance.GetTaskPanelPrefab(kind)   // 场景 unknow.unity 按 GUID 引用两个 prefab
+  │   ├─ null → LogError 并 return null（无纯代码兜底）
+  │   └─ 实例化 TaskPanelReasoning(Canvas, 215) / TaskPanelLongContext(Canvas, 216)
+  │      └─ UiFonts.Apply()   // 全部 Text → NotoSansSC
+```
+
+**运行时数据流（实时跟随当前回合）：**
+
+- 数据源：`ReplayRound.news`（`List<ReplayNews>`，字段 `type`/`text`）。推理类=【官方消息】、长上下文=【民间传闻】，经世界新闻下发（见 docs/Agent任务开发说明.md）。
+- `TaskPanelController.Update()`：**回合变化**（`_lastRound` 脏检查）时，从当前回合向前扫描 `data.rounds[cur-1..0]` 的 news，取**最近一条**匹配本面板类别的文本回填 `_body`。
+  - 向前扫描 → 非新闻回合不闪"暂无"，播放推进时保持显示该回合最新新闻；Seek/JumpTo 到任意回合按目标回合重建。
+  - 类别匹配（`Matches`）：`type`/`text` 含「官方」→推理类；含「民间/传闻」→长上下文（启发式，判题器下发具体 type 时只需改这一处）。
+  - 找不到 → 显示「暂无官方消息」/「暂无民间传闻」。
+- **布局**：两个面板 + 折线图在右上角垂直堆叠（anchor(1,1) pivot(1,1)）：推理类 (-10,-10) 300×120、长上下文 (-10,-140) 300×106、PriceChartCard (-10,-256) 340×240，互不重叠、与左侧事件日志无 x 冲突。折线图 X 轴显示天数、Y 轴显示具体数值（[PriceChartCard.cs](../Assets/Scripts/UI/PriceChartCard.cs) 代码生成）。
+- **当前数据现状（2026-09-01）**：所有 replay 的 `round.news` 均为空数组（推理类/长上下文任务经世界新闻下发，判题器暂未输出），面板显示占位文案；`vendorShopList` 也为空。用户后续更新 replay 数据后即可自动显示。
+- `ReplayPlayer.JumpTo` → `cur` 变化 → 下一帧 `Update()` 自然刷新（与其余面板同模式）。
+
+**Prefab vs 代码归属（本面板）：**
+
+| 项目 | 归属 |
+|---|---|
+| 布局（面板尺寸/坐标/标题文本/标题与正文颜色字号） | Prefab（代码只回填正文） |
+| 正文内容（官方消息 / 民间传闻） | 代码 `Update()` 运行时回填 |
+| 字体 | 代码 `UiFonts.Apply()` |
+
+**生成方式**：[TaskPanelPrefabBuilder.cs](../Assets/Editor/TaskPanelPrefabBuilder.cs)（菜单 `Tools/WildernessReplay/Build Task Panel Prefabs`）程序化构建两个 prefab + 接线场景 PrefabRefs，可重复运行。

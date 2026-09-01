@@ -25,6 +25,27 @@ public class TradeBadge : MonoBehaviour
         return badge;
     }
 
+    /// <summary>显示原始文字徽标（如装甲车「贩卖成功」），样式与工人购买面板一致：黑底板随文字自适应、同字号。</summary>
+    public static TradeBadge ShowText(Transform parent, string text, float yPos = 1.8f, float bgScale = 1f)
+    {
+        var badge = Obtain(parent, yPos, bgScale);
+        if (badge._tm != null) badge._tm.text = text;
+        badge.ApplyText(text, bgScale);
+        return badge;
+    }
+
+    /// <summary>在世界坐标显示原始文字徽标。父节点须 scale=1（如地图根），徽标用世界坐标定位，
+    /// 避免挂到被缩放物件（如 0.27 倍卡车）上继承缩放——否则弹出/上浮动画会被放大、位置漂移。</summary>
+    public static TradeBadge ShowTextWorld(Transform scaleOneParent, Vector3 worldPos, string text, float bgScale = 1f)
+    {
+        var badge = Obtain(scaleOneParent, 0f, bgScale);
+        badge.transform.position = worldPos;
+        badge._basePos = badge.transform.localPosition;   // 基准位置改为世界定位，避免上浮动画回跳
+        if (badge._tm != null) badge._tm.text = text;
+        badge.ApplyText(text, bgScale);
+        return badge;
+    }
+
     /// <summary>角色（工人/开拓者）使用道具 → 头顶"使用 xx"徽标（与小贩/商店同款）。</summary>
     public static TradeBadge ShowUse(Transform parent, string itemName,
         float yPos = 1.8f, float bgScale = 1f)

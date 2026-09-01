@@ -267,7 +267,13 @@ public class PlaybackControlPanelController : MonoBehaviour
             var memberT=isRed?_redMember:_blueMember; var taskT=isRed?_redTask:_blueTask;
             var bagT=isRed?_redBag:_blueBag;
 
-            if(name!=null){ name.text=isRed?"红方":"蓝方"; name.color=isRed?colRed:colBlue; }
+            if(name!=null)
+            {
+                // 队名显示格式：红方：{队名} / 蓝方：{队名}（队名为空时只显示阵营）
+                string label = isRed ? "红方" : "蓝方";
+                name.text = string.IsNullOrEmpty(st.teamName) ? label : label + "：" + st.teamName;
+                name.color = isRed ? colRed : colBlue;
+            }
             if(hpT!=null) hpT.text="基地 "+hp;
             if(goldT!=null) goldT.text="金币 "+st.gold;
             if(scoreT!=null) scoreT.text="积分 "+st.score;
@@ -276,12 +282,15 @@ public class PlaybackControlPanelController : MonoBehaviour
             if(memberT!=null) memberT.text="人数 "+members+"/"+MAX_MEMBER;
             if(taskT!=null)
             {
-                // 已接取/已作答 → 显示对错；否则显示"尚未接受任务"
+                // 显示 allTaskInfo：自进化类1/2 每类「完成X 失败Y 共Z」各一行（"失效"改名"失败"）。
+                // 任一类总数>0 才显示对应行；两行都没有则"尚未接受任务"。
                 // 注意：不加 emoji 前缀，避免回退字体行高不同导致与围墙行对不齐
-                if (st.taskCorrect > 0 || st.taskWrong > 0 || st.hasActiveTask)
-                    taskT.text="任务 对"+st.taskCorrect+" 错"+st.taskWrong;
-                else
-                    taskT.text="尚未接受任务";
+                var tsb = new System.Text.StringBuilder();
+                if (st.task1Total > 0)
+                    tsb.Append("自进化1 完成").Append(st.task1Done).Append(" 失败").Append(st.task1Failed).Append(" 共").Append(st.task1Total).Append('\n');
+                if (st.task2Total > 0)
+                    tsb.Append("自进化2 完成").Append(st.task2Done).Append(" 失败").Append(st.task2Failed).Append(" 共").Append(st.task2Total);
+                taskT.text = tsb.Length > 0 ? tsb.ToString().TrimEnd('\n') : "尚未接受任务";
             }
             if(bagT!=null) bagT.text="背包 "+bagStr;
         }

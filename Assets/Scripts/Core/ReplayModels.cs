@@ -13,6 +13,9 @@ public class ReplayStart
     public string type = "";
     public ReplayMap map;
     public List<ReplayTeam> teams = new List<ReplayTeam>();
+    // vendorShopPriceChange.date：小贩回收价波动窗口（推理类【官方消息】影响），-1 = 无该字段/无波动
+    public int priceChangeStartDay = -1;
+    public int priceChangeEndDay = -1;
 }
 
 public class ReplayMap
@@ -29,7 +32,14 @@ public class ReplayRound
     public List<ReplayResource> resources = new List<ReplayResource>();
     public List<ReplayNpc> npc = new List<ReplayNpc>();
     public List<ReplayNews> news = new List<ReplayNews>();
+    public List<ReplayVendorShop> vendorShopList = new List<ReplayVendorShop>(); // 小贩矿石回收价（stone/iron/copper），受世界新闻波动
     public List<ReplayTeam> teams = new List<ReplayTeam>();
+}
+
+public class ReplayVendorShop
+{
+    public string name = "";   // stone / iron / copper
+    public int price;
 }
 
 public class ReplayTeam
@@ -43,6 +53,9 @@ public class ReplayTeam
     public int completeTaskCount;
     public int invalidTaskCount;
     public ReplayTask task;
+    // allTaskInfo：自进化类1/2 每类 [已完成数, 失败数, 总数]（实际数据可能只有 [完成, 总数] 两项）
+    public int task1Done, task1Failed, task1Total;   // 自进化类1
+    public int task2Done, task2Failed, task2Total;   // 自进化类2
     public List<ReplayRole> roles = new List<ReplayRole>();
 }
 
@@ -95,6 +108,7 @@ public class ReplayTask
     public int reward;
     public bool isTaskComplete;
     public int roundCost;
+    public int taskX, taskY;   // 任务点格子坐标（game 坐标系；装甲车任务 pos 指向对应卡车）
 }
 
 public class ReplayResource

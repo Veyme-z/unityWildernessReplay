@@ -38,6 +38,9 @@ public class ReplayEntry : MonoBehaviour
 
         // 任务卡片系统（每帧扫当前回合 teams[].task 判定状态，见 TaskBadgeManager）
         gameObject.AddComponent<TaskBadgeManager>();
+
+        // 装甲车任务点驱动（「自进化类2」任务完成 → 卡车开到小贩前面）
+        gameObject.AddComponent<MissionVehicleDriver>();
     }
 
     /// <summary>
@@ -229,8 +232,12 @@ public class ReplayEntry : MonoBehaviour
             // ---- 底部双队面板 + 时间轴 + 播放控制 ----
             PlaybackControlPanelController.Create(player);
 
-            // ---- 右侧任务面板（占位：推理类任务 + 官方消息） ----
-            TaskPanelController.Create(player);
+            // ---- 左上角任务面板（推理类 + 长上下文，实时显示世界新闻） ----
+            TaskPanelController.Create(player, TaskPanelKind.Reasoning);
+            TaskPanelController.Create(player, TaskPanelKind.LongContext);
+
+            // ---- 资源价格折线图卡片（右上角，任务面板下方） ----
+            PriceChartCard.Create(player);
 
             // ---- 固定相机初始视角（ReplayCameraRig 接管后负责平滑运镜）----
             camGo.transform.position = new Vector3(0f, 40f, -8f);

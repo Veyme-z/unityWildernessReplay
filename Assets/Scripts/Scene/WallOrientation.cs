@@ -42,6 +42,8 @@ public class WallOrientation : MonoBehaviour
     // 拐角沿自身水平臂方向的位置偏移（视觉上让拐角贴向横墙）。(28,12) 实测 -0.22，各角方向随旋转不同。
     const float CORNER_OFFSET_X = -0.22f;
 
+    int _lastLevel = -1; // 上次应用的等级，变化时才重刷材质
+
     void Start()
     {
         var view = GetComponent<UnitView>();
@@ -52,6 +54,7 @@ public class WallOrientation : MonoBehaviour
         int cx = Mathf.RoundToInt(pos.x + 20f);
         int cy = Mathf.RoundToInt(pos.z + 15.5f);
 
+        bool handled = false;
         for (int i = 0; i < ZONES.Length; i++)
         {
             var z = ZONES[i];
@@ -59,7 +62,8 @@ public class WallOrientation : MonoBehaviour
             if (z.useCorners && (cx == z.vxLeft || cx == z.vxRight) && (cy == z.hyBottom || cy == z.hyTop))
             {
                 UseCornerPrefab(cx, cy, z);
-                return;
+                handled = true;
+                break;
             }
             // 四方向变体（竖先于横判断：蓝方 x=7 列延伸到 y=24 时优先竖）
             float rotY;
@@ -69,11 +73,43 @@ public class WallOrientation : MonoBehaviour
             else if (cx >= z.hxMin && cx <= z.hxMax && cy == z.hyBottom) rotY = 180f; // 横镜像
             else continue; // 不属于该环，查下一个环
             transform.localRotation = Quaternion.Euler(0f, rotY, 0f);
-            return;
+            handled = true;
+            break;
         }
+        if (!handled)
+            transform.localRotation = Quaternion.Euler(0f, 90f, 0f); // 都不属于任何环 → 默认竖
 
-        // 都不属于任何环 → 默认竖
-        transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+        // 按围墙等级切换材质（土/水泥/铁/钢），墙身 + 拐角件都换
+        ApplyLevelMaterial();
+        _lastLevel = view.state.level;
+    }
+
+    /// <summary>每帧检测等级变化（升级券生效时刷新材质）。</summary>
+    void LateUpdate()
+    {
+        var view = GetComponent<UnitView>();
+        if (view == null || view.state == null) return;
+        if (view.state.level == _lastLevel) return;
+        _lastLevel = view.state.level;
+        ApplyLevelMaterial();
+    }
+
+    /// <summary>按 state.level 把墙身/拐角件的 hexagons 材质换成对应等级材质（血条 HpFill/HpBar 不动）。</summary>
+    void ApplyLevelMaterial()
+    {
+        var view = GetComponent<UnitView>();
+        if (view == null || view.state == null) return;
+        int level = Mathf.Clamp(view.state.level, 1, 4);
+        var mat = Resources.Load<Material>("Prefabs/Buildings/WallLv" + level);
+        if (mat == null) return;
+        var rends = GetComponentsInChildren<Renderer>(true);
+        foreach (var r in rends)
+        {
+            // 血条（HpFill/HpBar）不换；其余都是墙身/拐角件，统一换等级材质。
+            // 不能按材质名过滤：墙一旦换成 WallLvX 就不再是 hexagons，刷新会失配。
+            if (r.name == "HpFill" || r.name == "HpBar") continue;
+            r.sharedMaterial = mat;
+        }
     }
 
     /// <summary>把直墙 Model 换成拐角 prefab，只按角旋转；缩放完全用 Resources 里 prefab 自带的（在 prefab 里调）。</summary>

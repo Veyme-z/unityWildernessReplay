@@ -42,9 +42,10 @@
 | Scripts/UI/PlaybackControlPanelController.cs | MonoBehaviour | 285 | 底部双队+时间轴+控制按钮（prefab 驱动；AddDirectorUI 动态加手动/自动按钮，WireCallbacks 按名接线；静态 ShowUnitStats 全局调试开关） | ReplayEntry、UnitDebugOverlay（读静态开关） | PrefabRefs、ReplayPlayer、CameraManager、ReplayCameraRig | 依赖 prefab（缺 prefab 时 Create 报错返回 null） |
 | Scripts/UI/EventLogPanelController.cs | MonoBehaviour | 75 | 左侧事件日志 | ReplayEntry、ReplayPlayer | PrefabRefs | 依赖 prefab |
 | Scripts/UI/SettlementPanelController.cs | MonoBehaviour | 72 | 结算画面 | ReplayPlayer | PrefabRefs | 依赖 prefab |
-| Scripts/UI/TaskPanelController.cs | MonoBehaviour | 118 | 右侧任务面板（占位，**纯代码、无 Prefab 路径**） | ReplayEntry | ReplayPlayer | 疑似死代码（占位内容） |
+| Scripts/UI/TaskPanelController.cs | MonoBehaviour | ~90 | 推理类/长上下文任务面板（prefab 驱动，实时读 round.news 世界新闻，向前扫描最近一条） | ReplayEntry | PrefabRefs、ReplayPlayer | 依赖 prefab |
 | Scripts/UI/UnitDebugOverlay.cs | MonoBehaviour | 139 | 单位头顶调试悬浮文字（[ID\|坐标\|HP\|攻击力]；围墙/野兽内部过滤；受 PlaybackControlPanelController.ShowUnitStats 全局开关） | UnitView（ConfigureFromUnitPrefab 挂载） | UiFonts、Billboard、PlaybackControlPanelController（静态开关） | 依赖全局静态开关（默认 false，未显示时零渲染） |
 | Editor/TowerPrefabBuilder.cs | static | 124 | 编辑器工具：生成 6 个塔视觉包装 Prefab | 菜单 Tools/WildernessReplay | AssetDatabase、TowerVisualController | EditorOnly（正常） |
+| Editor/TaskPanelPrefabBuilder.cs | static | ~160 | 编辑器工具：生成推理类/长上下文任务面板 Prefab + 接线场景 PrefabRefs | 菜单 Tools/WildernessReplay | AssetDatabase、TaskPanelController、PrefabRefs | EditorOnly（正常） |
 
 第三方但位于 Assets 下、**不审计**：`Assets/Raygeas/Shared Assets/Scripts/*`（6 个，环境素材包自带的 PlayerController/Interactive 等）。
 
@@ -70,7 +71,7 @@ Load():
   7. new ReplayPlayer → Setup(data, rig)：建 Units 根、ResourceViewManager、camRig.Focus/FitMap、engine.Init + 预载第1回合
   8. camMgr.Init(player)
   9. new DayNightController（Awake 单例，Start 找 Sun/Camera.main）
-  10. HudController.Create / EventLogPanelController.Create / PlaybackControlPanelController.Create / TaskPanelController.Create
+  10. HudController.Create / EventLogPanelController.Create / PlaybackControlPanelController.Create / TaskPanelController.Create(Reasoning) / TaskPanelController.Create(LongContext)
   11. 相机固定初始视角 → player.SetPlaying(true)
 ```
 
@@ -83,7 +84,7 @@ Load():
 - `DayNightController.LateUpdate`：RoundFloat → cyclePos → LightingProfile。
 - `CameraManager.LateUpdate`（仅 Auto）：SmoothDamp 三通道 + 震屏 + 景深。
 - `ReplayCameraRig.LateUpdate`（非 Auto 时）：机位平滑。
-- `HudController.Update` / `PlaybackControlPanelController.Update`（每帧 Sync）/ `TaskPanelController.Update`：UI 刷新。
+- `HudController.Update` / `PlaybackControlPanelController.Update`（每帧 Sync）/ `TaskPanelController.Update`（回合变化时读 round.news）：UI 刷新。
 - `Billboard.LateUpdate` / 各 FX 的 `Update`。
 
 ### Seek / Pause / Restart 三条 Reset 路径
@@ -141,7 +142,6 @@ Load():
 - **证据**：
   - `StateEngine.DayOf`/`IsNight`（130、80）`ReplayState.cs:435-436`
   - `HudController.Update`（130、80、50）`HudController.cs:149-151`
-  - `TaskPanelController.Sync`（130）`TaskPanelController.cs:115`
   - `DayNightController.ResolveProfile`（130 周期 + 阶段切点 5/65/76/80/125）`DayNightController.cs:132,152-163`
 - **建议**：抽 `DayNightConst` 常量类。低优先级（已有两处 `DayOf/IsNight` 作为权威入口，但 Hud/TaskPanel 各自重算）。
 
@@ -170,8 +170,8 @@ Load():
 ### 3.6 CreateFromCode 与 Prefab 路径内容分叉 —— 已消除（2026-08-19）
 
 - **事实**：原 4 个 UI Controller（Hud/EventLog/Playback/Settlement）都有 `Create`（Prefab 优先）+ `CreateFromCode` 纯代码兜底双轨。**2026-08-19 已全部删除兜底**：`Create()` 缺 prefab 直接 `Debug.LogError` 并返回 null（ReplayEntry/ReplayPlayer 调用处已补 null 保护），不再有纯代码 UI 路径。
-- **现状**：5 个 UI 面板中 4 个（Hud/EventLog/Playback/Settlement）纯 prefab 驱动；`TaskPanelController` 仍是**唯一纯代码、无 prefab 路径**的面板，与其余不一致。
-- **建议**：后续新增面板统一 prefab 驱动（PrefabRefs 序列化引用 + `UiFonts.Apply` + 按名接线）；如需把 TaskPanel 也改成 prefab，参考其余 4 个的 `Create`。
+- **现状**：全部 6 个 UI 面板（Hud/EventLog/Playback/Settlement + 推理类/长上下文任务面板）纯 prefab 驱动；`TaskPanelController` 已由纯代码改为 prefab 驱动（实时读 `round.news`，见 3.3 移除的 130 魔法数）。
+- **建议**：后续新增面板统一 prefab 驱动（PrefabRefs 序列化引用 + `UiFonts.Apply` + 按名接线）。
 
 ### 3.7 TeamColorApplicator 现在还改不影响 SelRing 的东西吗
 

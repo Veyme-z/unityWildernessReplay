@@ -56,6 +56,10 @@ public class PrefabRefs : MonoBehaviour
     public GameObject eventLogPanelPrefab;
     public GameObject playbackControlPanelPrefab;
     public GameObject settlementPanelPrefab;
+    [Tooltip("推理类任务面板（右上角，世界新闻【官方消息】）")]
+    public GameObject taskPanelReasoningPrefab;
+    [Tooltip("长上下文任务面板（右上角，世界新闻【民间传闻】）")]
+    public GameObject taskPanelLongContextPrefab;
 
     // ═══════════════════════════════════════════════
     // 单例
@@ -110,6 +114,10 @@ public class PrefabRefs : MonoBehaviour
     /// <summary>结算面板 prefab 是否存在</summary>
     public bool HasSettlementPrefab => settlementPanelPrefab != null;
 
+    /// <summary>任务面板 prefab 是否存在（按类别）</summary>
+    public bool HasTaskPanelPrefab(TaskPanelKind kind) =>
+        (kind == TaskPanelKind.Reasoning ? taskPanelReasoningPrefab : taskPanelLongContextPrefab) != null;
+
     // ═══════════════════════════════════════════════
     // Resources 路径（当 Inspector 引用为空时的 fallback）
     // ═══════════════════════════════════════════════
@@ -118,6 +126,8 @@ public class PrefabRefs : MonoBehaviour
     const string RES_EVENT_LOG = "Prefabs/UI/EventLogPanel";
     const string RES_PLAYBACK = "Prefabs/UI/PlaybackControlPanel";
     const string RES_SETTLEMENT = "Prefabs/UI/SettlementPanel";
+    const string RES_TASK_REASONING = "Prefabs/UI/TaskPanelReasoning";
+    const string RES_TASK_LONGCTX = "Prefabs/UI/TaskPanelLongContext";
 
     /// <summary>
     /// 获取单位 prefab：先查 Inspector 引用 → 再查 Resources。
@@ -151,5 +161,13 @@ public class PrefabRefs : MonoBehaviour
     {
         if (settlementPanelPrefab != null) return settlementPanelPrefab;
         return Resources.Load<GameObject>(RES_SETTLEMENT);
+    }
+
+    /// <summary>按类别获取任务面板 prefab：先查 Inspector 引用 → 再查 Resources。</summary>
+    public GameObject GetTaskPanelPrefab(TaskPanelKind kind)
+    {
+        if (kind == TaskPanelKind.Reasoning)
+            return taskPanelReasoningPrefab != null ? taskPanelReasoningPrefab : Resources.Load<GameObject>(RES_TASK_REASONING);
+        return taskPanelLongContextPrefab != null ? taskPanelLongContextPrefab : Resources.Load<GameObject>(RES_TASK_LONGCTX);
     }
 }

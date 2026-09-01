@@ -1,118 +1,90 @@
 using UnityEngine;
 using UnityEngine.UI;
 
+/// <summary>任务面板类别。</summary>
+public enum TaskPanelKind
+{
+    Reasoning,    // 推理类任务 — 世界新闻【官方消息】
+    LongContext   // 长上下文任务 — 世界新闻【民间传闻】
+}
+
 /// <summary>
-/// 右侧任务面板 — 独立 Canvas，位于右上角。
-/// 当前为占位内容：显示「推理类任务」分类，正文为【官方消息】，每 130 回合轮换一条。
+/// 推理类 / 长上下文任务面板 — Prefab 驱动，实时读取当前回合的世界新闻。
+/// 推理类显示【官方消息】、长上下文显示【民间传闻】，数据源均为 ReplayRound.news。
+///
+/// 刷新策略：随 replay 播放推进更新；拖动进度条 / Seek 到任意回合时，
+/// 从目标回合向前扫描最近一条匹配本面板类别的新闻显示（非新闻回合不闪"暂无"）。
+/// 当前所有 replay 数据 news 为空时显示占位文案。
+///
+/// Prefab 是真源（场景 PrefabRefs.taskPanelReasoningPrefab / taskPanelLongContextPrefab 按 GUID 引用）；
+/// 缺失时 Create() 报错并返回 null（与其余 UI Controller 一致，无纯代码兜底）。
 /// </summary>
 public class TaskPanelController : MonoBehaviour
 {
+    [SerializeField] TaskPanelKind _kind;
     [SerializeField] Text _title;
-    [SerializeField] Text _category;
     [SerializeField] Text _body;
 
     ReplayPlayer _player;
-    int _lastDay = -1;
+    int _lastRound = -1;
 
-    // 占位官方消息（每 130 回合轮换一条）
-    static readonly string[] NEWS = new string[]
+    public static TaskPanelController Create(ReplayPlayer player, TaskPanelKind kind)
     {
-        "矿业管理局紧急通报：北部铁矿区昨夜发生严重矿井塌方事故，主巷道结构受损，部分作业面被掩埋。",
-        "安全监察部门已下达通知：为保障矿工安全，矿区将于明日全面停工，进行巷道加固和主矿脉修复。"
-    };
-
-    static Font BuiltinFont()
-    {
-        return UiFonts.Get();
-    }
-
-    public static TaskPanelController Create(ReplayPlayer player)
-    {
-        var font = BuiltinFont();
-
-        // ── 独立 Canvas ──
-        var canvasGo = new GameObject("TaskPanelCanvas");
-        var canvas = canvasGo.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 210; // 与事件日志同级
-        var scaler = canvasGo.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920, 1080);
-        scaler.matchWidthOrHeight = 0.5f;
-        canvasGo.AddComponent<GraphicRaycaster>();
-
-        // ── 面板（右上角，紧凑尺寸） ──
-        var panelGo = new GameObject("Panel");
-        panelGo.transform.SetParent(canvasGo.transform, false);
-        var rt = panelGo.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(1, 1);
-        rt.anchorMax = new Vector2(1, 1);
-        rt.pivot = new Vector2(1, 1);
-        rt.anchoredPosition = new Vector2(-10, -10);
-        rt.sizeDelta = new Vector2(280, 240);
-        panelGo.AddComponent<Image>().color = new Color(0.102f, 0.102f, 0.118f, 0.85f);
-
-        // ── 标题（居中） ──
-        var title = MakeText(panelGo.transform, "Title", "任务面板", font, 16,
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -8), new Vector2(260, 24),
-            Color.white, TextAnchor.MiddleCenter);
-
-        // ── 分类：推理类任务（左对齐） ──
-        var category = MakeText(panelGo.transform, "Category", "【推理类任务】", font, 14,
-            new Vector2(0, 1f), new Vector2(0, 1f), new Vector2(0, 1f), new Vector2(12, -40), new Vector2(256, 20),
-            new Color(0.96f, 0.72f, 0.22f), TextAnchor.UpperLeft);
-
-        // ── 正文：官方消息（轮换） ──
-        var body = MakeText(panelGo.transform, "Body", "", font, 13,
-            new Vector2(0, 1f), new Vector2(0, 1f), new Vector2(0, 1f), new Vector2(12, -64), new Vector2(256, 160),
-            new Color(0.75f, 0.73f, 0.68f), TextAnchor.UpperLeft);
-        body.horizontalOverflow = HorizontalWrapMode.Wrap;
-        body.verticalOverflow = VerticalWrapMode.Overflow;
-
-        var ctrl = panelGo.AddComponent<TaskPanelController>();
-        ctrl._title = title;
-        ctrl._category = category;
-        ctrl._body = body;
+        // prefab 是真源：场景 PrefabRefs 按 GUID 引用，缺失即报错（不再有纯代码兜底）
+        var prefab = PrefabRefs.Instance.GetTaskPanelPrefab(kind);
+        if (prefab == null)
+        {
+            Debug.LogError("[TaskPanelController] 缺少 TaskPanel prefab（请检查场景 PrefabRefs."
+                + (kind == TaskPanelKind.Reasoning ? "taskPanelReasoningPrefab" : "taskPanelLongContextPrefab")
+                + "），任务面板未创建。");
+            return null;
+        }
+        var go = Object.Instantiate(prefab);
+        UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
+        var ctrl = go.GetComponentInChildren<TaskPanelController>();
+        if (ctrl == null) ctrl = go.AddComponent<TaskPanelController>();
+        ctrl._kind = kind;
         ctrl._player = player;
-        ctrl._lastDay = -1;
-        ctrl.Sync(player);
         return ctrl;
-    }
-
-    static Text MakeText(Transform parent, string name, string text, Font font, int fontSize,
-        Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, Color color, TextAnchor align)
-    {
-        var go = new GameObject(name);
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.anchorMin = anchorMin;
-        rt.anchorMax = anchorMax;
-        rt.pivot = pivot;
-        rt.anchoredPosition = anchoredPos;
-        rt.sizeDelta = size;
-        var t = go.AddComponent<Text>();
-        t.text = text;
-        t.font = font;
-        t.fontSize = fontSize;
-        t.alignment = align;
-        t.color = color;
-        t.raycastTarget = false;
-        return t;
     }
 
     void Update()
     {
-        if (_player != null) Sync(_player);
+        if (_player == null || _player.data == null) return;
+        int round = _player.cur;
+        if (round < 1 || round > _player.data.rounds.Count) return;
+        if (round == _lastRound) return;   // 回合未变不刷新
+        _lastRound = round;
+        if (_body != null) _body.text = FindLatestNews(round);
     }
 
-    void Sync(ReplayPlayer p)
+    /// <summary>从当前回合向前扫描，返回最近一条匹配本面板类别的新闻正文；没有则返回占位文案。</summary>
+    string FindLatestNews(int round)
     {
-        if (p == null) return;
-        int day = (p.cur - 1) / 130;      // 每 130 回合 = 一天
-        if (day == _lastDay) return;
-        _lastDay = day;
-        int idx = day % NEWS.Length;
-        if (_body != null)
-            _body.text = "【官方消息】\n" + NEWS[idx];
+        for (int r = round; r >= 1; r--)
+        {
+            var rr = _player.data.rounds[r - 1];
+            if (rr == null || rr.news == null) continue;
+            for (int i = rr.news.Count - 1; i >= 0; i--)
+            {
+                var n = rr.news[i];
+                if (n == null || string.IsNullOrEmpty(n.text)) continue;
+                if (Matches(n)) return n.text;
+            }
+        }
+        return _kind == TaskPanelKind.Reasoning ? "暂无官方消息" : "暂无民间传闻";
+    }
+
+    /// <summary>类别匹配：官方消息→推理类；民间传闻→长上下文（type 或 text 含关键词即命中）。</summary>
+    bool Matches(ReplayNews n)
+    {
+        string type = n.type ?? "";
+        string text = n.text ?? "";
+        bool isReasoning = type.IndexOf("官方", System.StringComparison.Ordinal) >= 0
+            || text.IndexOf("官方消息", System.StringComparison.Ordinal) >= 0;
+        bool isLongContext = type.IndexOf("民间", System.StringComparison.Ordinal) >= 0
+            || type.IndexOf("传闻", System.StringComparison.Ordinal) >= 0
+            || text.IndexOf("民间传闻", System.StringComparison.Ordinal) >= 0;
+        return _kind == TaskPanelKind.Reasoning ? isReasoning : isLongContext;
     }
 }
