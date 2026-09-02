@@ -43,7 +43,7 @@ public partial class UnitView
         { 30, new HpBarStyle { yOffset = TOWER_HP_TOP_PADDING, widthMul = 1.28f, thick = 0.12f } },
         { 31, new HpBarStyle { yOffset = TOWER_HP_TOP_PADDING, widthMul = 1.28f, thick = 0.12f } },
         { 32, new HpBarStyle { yOffset = TOWER_HP_TOP_PADDING, widthMul = 1.28f, thick = 0.12f } },
-        { 4,  new HpBarStyle { yOffset = 2.2f,        widthMul = 1.6f,  thick = 0.10f } },
+        { 4,  new HpBarStyle { yOffset = 1.5f,        widthMul = 4f,  thick = 0.16f } },
         { 5,  new HpBarStyle { yFactor = 0.55f,       widthMul = 1f,    thick = 0.05f, depth = 0.025f, yShift = -0.5f } }, // 围墙：深度减半防过厚，血条下移 0.5
         { 7,  new HpBarStyle { yFactor = 0.65f,       widthMul = 1f,    thick = 0.05f } },
         // 野兽统一为 SciFi 模块化角色（等身高）：血条位于头顶上方、宽度适中（不再按旧模型 2.5× 放大）

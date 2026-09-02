@@ -360,6 +360,7 @@ Create(state, parent)
 | **MainModule 是结构体** | `var m = ps.main; m.playOnAwake = false;` 这种写法有效（MainModule 属性 setter 直写原生对象），但不要对 `ps.main` 整体赋值 |
 | **WebGL "Insecure connection not allowed"** | HTTP 页面下 `UnityWebRequest.Get(绝对 http://URL)` 抛 `InvalidOperationException`。`ReplayEntry.RelativeStreamingUrl()` 把 `Application.streamingAssetsPath` 归一化为「相对当前网页」路径（剥掉协议+host，协议跟随页面），`LoadWebText()` 同步段包 try/catch 兜底走 demo，异常不中断初始化 |
 | **`AudioSource.isPlaying` 在 `AudioListener.pause` 时恒 false** | 回放暂停（`AudioListener.pause=true`）时任何 `AudioSource.isPlaying` 都返回 false。`BgmController` 判断「要淡出的旧通道」**不能靠 `isPlaying`**（否则暂停拖时间轴 seek 时旧曲不淡出，恢复播放双曲叠加），必须按 `clip` 归属判定、结束无条件 `Stop()`。换/调 BGM 逻辑时注意 |
+| **uGUI Text 在过矮的 rect 里整行被丢弃（数字不显示）** | `Text` 默认 `verticalOverflow=Truncate`：当 rect 高度小于该字号的行高（Noto 动态字体行高≈1.4×字号，15 号约 23px）时 TextGenerator 判定无行可放 → **生成 0 字符、静默不显示**。价格图轴标签曾用 36×22 rect + 15 号 → 数字全消失（曲线 RawImage 与卡片中文正常，曾误以为字体缺字形）。修复：`PriceChartCard.MakeText` 设 `horizontal/verticalOverflow = Overflow`；标签 rect 改类常量 `LABEL_W=56/LABEL_H=30/LABEL_FONT_SIZE=15`（高度须明显大于行高）。**排查 uGUI Text 不显示先看 rect 高 vs 行高 + Overflow，别先怀疑字体文件** |
 
 > 资源 / 材质 / 模型 / 贴图 / 动画资源类坑已全部移至 [资源问题与解决方案.md](资源问题与解决方案.md)，此处只保留**代码/逻辑**类坑。
 

@@ -24,7 +24,8 @@ public class PriceChartData
     /// 遍历 rounds，按天聚合出每日价格。
     /// 规则：价格逐回合随 vendorShopList 更新；某天结束时（进入下一天的首轮 / 最后一轮）把当天结束时的价格快照一次。
     /// 因此每天的价格 = 当天最后一轮执行到的价格（受世界新闻波动），carry-forward 到后续天。
-    /// 若回放含 vendorShopPriceChange.date.stopDay，则只保留 day ≤ stopDay 的天（价格波动期，X 轴标签显示到 stopDay 为止）。
+    /// 必须有 vendorShopPriceChange 窗口（startDay≥1 且 endDay≥startDay）才产出数据（否则调用方不建卡）。
+    /// X 轴坐标范围 = [windowStartDay-1, windowEndDay+2]：提前 1 天看到波动前基线、多看 2 天看到恢复。
     /// </summary>
     public static PriceChartData FromReplay(ReplayData data)
     {
@@ -35,6 +36,11 @@ public class PriceChartData
             chart.windowStartDay = data.start.priceChangeStartDay;
             chart.windowEndDay = data.start.priceChangeEndDay;
         }
+
+        // 无有效波动窗口（字段缺省 -1 / 不合法）→ 整卡不显示（Create 见 dailyPrices 为空返回 null）
+        if (!(chart.windowStartDay >= 1 && chart.windowEndDay >= chart.windowStartDay)) return chart;
+        int showFrom = chart.windowStartDay - 1;   // startDay-1；≤0 时被天数下界过滤（DayOf 从 1 起）
+        int showTo = chart.windowEndDay + 2;       // endDay+2
 
         int stone = 0, copper = 0, iron = 0;
         int lastDay = -1;
@@ -76,14 +82,11 @@ public class PriceChartData
                 ironPrice = iron
             });
 
-        // 若存在 stopDay 波动窗口 → 保留 day ≤ stopDay+1 的天（X 轴比波动结束多显示 1 天，看到恢复）
-        if (chart.windowEndDay > 0)
-        {
-            var filtered = new List<DailyPrice>();
-            foreach (var dp in chart.dailyPrices)
-                if (dp.day <= chart.windowEndDay + 1) filtered.Add(dp);
-            chart.dailyPrices = filtered;
-        }
+        // 只保留 [startDay-1, endDay+2] 的天 → X 轴坐标范围即该窗口
+        var filtered = new List<DailyPrice>();
+        foreach (var dp in chart.dailyPrices)
+            if (dp.day >= showFrom && dp.day <= showTo) filtered.Add(dp);
+        chart.dailyPrices = filtered;
 
         return chart;
     }
@@ -91,6 +94,8 @@ public class PriceChartData
 
 /// <summary>
 /// 资源价格折线图卡片：右上角（任务面板下方）展示 石头/铜/铁 的每日小贩回收价走势（阶跃函数）。
+/// 显示时机由 replay 的 vendorShopPriceChange.date 决定：无有效窗口（startDay/stopDay 缺省）整卡不建；
+/// 有窗口则 X 轴范围 = [startDay-1, stopDay+2]，且卡片只在播放到该天区间内显示、区间外隐藏（跟随播放天）。
 /// Prefab 是真源（场景 PrefabRefs.priceChartPrefab 按 GUID 引用，缺失时 Create() 报错返回 null）。
 /// 静态布局（标题/单位标注/图例/图表区位置）在 prefab 中，用户可直接调；只有图表纹理 + 数值/天数轴标签
 /// 由代码从 replay 的 vendorShopList 聚合绘制（PriceChartData.FromReplay → RenderChart → AddAxisLabels）。
@@ -102,6 +107,12 @@ public class PriceChartCard : MonoBehaviour
     [SerializeField] Text _title;
     [SerializeField] RawImage _chartImage;
     [SerializeField] Text _emptyLabel;  // 无价格数据提示
+
+    // 窗口显隐（运行态，依据 replay 的 vendorShopPriceChange.date）
+    ReplayPlayer _player;   // 读当前回合 → 天（StateEngine.DayOf(cur)）
+    GameObject _panelGo;    // 卡片视觉根（prefab 根下名为 "Panel" 的子节点）：只切它，根 Canvas 保持激活以便回来
+    int _fromDay;           // 显示起始天 = windowStartDay - 1（下限 1）
+    int _toDay;             // 显示结束天 = windowEndDay + 2
 
     // 三条折线颜色（与图例一致）：石头用紫色（原灰色易与白色坐标轴混淆）
     static readonly Color STONE  = new Color(0.72f, 0.38f, 0.95f);
@@ -116,6 +127,15 @@ public class PriceChartCard : MonoBehaviour
     const int PAD_RIGHT = 24;
     const int PAD_TOP = 18;
     const int PAD_BOTTOM = 46;
+
+    // 轴标签字号与 rect：LABEL_H 必须明显大于该字号的行高（Noto 动态字体行高≈1.4×字号，
+    // 15 号约 23px）。历史 bug：rect 高 22 时 uGUI Text 默认 Truncate 把整行丢弃 → 数字全不显示
+    //（详见 MakeText 注释 / docs 已知大坑）。留足高度 + MakeText 里 Overflow 双保险。
+    const int LABEL_FONT_SIZE = 15;
+    const float LABEL_W = 56f;
+    const float LABEL_H = 30f;
+    // X 轴天数数字中心到 X 轴线的距离（本地 px）：越小数字越贴轴线。轴线画在纹理里不动，只挪数字。
+    const float X_NUM_GAP = 12f;
 
     /// <summary>创建资源价格卡片（prefab 是真源：静态布局在 prefab 中，用户可直接调标题/单位/图例/图表区位置；
     /// 只有图表纹理 + 数值/天数轴标签由代码从 replay 读取绘制）。返回 null 表示回放无价格数据。</summary>
@@ -138,6 +158,14 @@ public class PriceChartCard : MonoBehaviour
         var ctrl = go.GetComponentInChildren<PriceChartCard>();
         if (ctrl == null) ctrl = go.AddComponent<PriceChartCard>();
         ctrl.Render(chartData);
+
+        // 窗口显隐接线：只隐藏/显示视觉根 Panel（根 Canvas + 本组件保持激活，Update 持续判断）
+        foreach (Transform ch in go.transform)
+            if (ch.name == "Panel") { ctrl._panelGo = ch.gameObject; break; }
+        ctrl._player = player;
+        ctrl._fromDay = Mathf.Max(1, chartData.windowStartDay - 1);
+        ctrl._toDay = chartData.windowEndDay + 2;
+        ctrl.ApplyVisibility();   // 立刻按当前回合设置初始显隐（防闪一帧）
         return ctrl;
     }
 
@@ -159,6 +187,22 @@ public class PriceChartCard : MonoBehaviour
         AddAxisLabels(data.dailyPrices, maxPrice, yStep, dayStep);
     }
 
+    /// <summary>跟随播放进度按天显隐（每帧）：窗口 [startDay-1,endDay+2] 内才显示，之前/之后都隐藏。</summary>
+    void Update()
+    {
+        if (_player == null || _panelGo == null) return;
+        ApplyVisibility();
+    }
+
+    /// <summary>按当前播放天设置卡片显隐：只切 _panelGo（视觉根），根 Canvas 与本组件保持激活，Seek 回去/到点才能重新出现。
+    /// 回合没跨天时 activeSelf 不变 → 不重复 SetActive。</summary>
+    void ApplyVisibility()
+    {
+        int day = StateEngine.DayOf(_player.cur);
+        bool vis = day >= _fromDay && day <= _toDay;
+        if (_panelGo.activeSelf != vis) _panelGo.SetActive(vis);
+    }
+
     /// <summary>在图表上叠加 Y 轴数值标签（每条网格线）+ X 轴天数标签（步进 dayStep）。
     /// 位置按纹理像素 → RawImage 显示坐标换算（scaleX/scaleY = 显示尺寸 / 纹理尺寸）。</summary>
     void AddAxisLabels(List<DailyPrice> prices, int maxPrice, int yStep, int dayStep)
@@ -170,8 +214,7 @@ public class PriceChartCard : MonoBehaviour
         int plotW = TEX_W - PAD_LEFT - PAD_RIGHT;
         int plotH = TEX_H - PAD_TOP - PAD_BOTTOM;
         Font font = UiFonts.Get();
-        // 标签样式参考长上下文正文颜色（柔和灰，非纯白）
-        const int labelFontSize = 15;
+        // 标签样式参考长上下文正文颜色（柔和灰，非纯白）；字号/rect 统一用类常量 LABEL_*
         var labelColor = new Color(0.75f, 0.73f, 0.68f);
 
         // Y 轴数值标签（含 0 和 max），贴在绘图区左侧。
@@ -182,9 +225,9 @@ public class PriceChartCard : MonoBehaviour
             float py = PAD_BOTTOM + (float)v / maxPrice * plotH;
             float ly = (py - TEX_H * 0.5f) * sy;
             float lx = (PAD_LEFT - TEX_W * 0.5f) * sx - 6f;
-            MakeText(rt, "Y_" + v, v.ToString(), font, labelFontSize,
+            MakeText(rt, "Y_" + v, v.ToString(), font, LABEL_FONT_SIZE,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(1f, 0.5f),
-                new Vector2(lx, ly), new Vector2(36, 22), labelColor, TextAnchor.MiddleRight);
+                new Vector2(lx, ly), new Vector2(LABEL_W, LABEL_H), labelColor, TextAnchor.MiddleRight);
         }
 
         // X 轴天数标签（步进 dayStep；最后一个数据点也补一个），锚点同为图表中心
@@ -200,10 +243,12 @@ public class PriceChartCard : MonoBehaviour
     {
         float px = PAD_LEFT + (count > 1 ? (float)index / (count - 1) : 0.5f) * plotW;
         float lx = (px - TEX_W * 0.5f) * sx;
-        float ly = (PAD_BOTTOM - TEX_H * 0.5f) * sy - 13f;   // 绘图区底边之下
-        MakeText(rt, "X_" + p.day, p.day.ToString(), font, 15,
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 1f),
-            new Vector2(lx, ly), new Vector2(36, 22), color, TextAnchor.MiddleCenter);
+        // 天数数字：pivot 直接用中心 (0.5,0.5)，中心锚在 X 轴线下方 X_NUM_GAP 处（调小=数字上移贴轴）。
+        // X 轴线是曲线纹理里画死的底横线，这里只移动数字文本，轴线本身不动。
+        float ly = (PAD_BOTTOM - TEX_H * 0.5f) * sy - X_NUM_GAP;
+        MakeText(rt, "X_" + p.day, p.day.ToString(), font, LABEL_FONT_SIZE,
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(lx, ly), new Vector2(LABEL_W, LABEL_H), color, TextAnchor.MiddleCenter);
     }
 
     // ---------- 图表渲染（Texture2D 程序化绘制） ----------
@@ -246,6 +291,22 @@ public class PriceChartCard : MonoBehaviour
         var tick = new Color(1f, 1f, 1f, 0.4f);    // 刻度线
         int n = prices.Count;
 
+        // 同一天是否有 ≥2 条线同时涨跌：是 → 这些天的跳变段 x 需左右错开（否则多条竖直脉冲重叠看不见）。
+        // 只有一条线变化的正常日子不移（脉冲仍对齐当天刻度）。
+        bool[] sharedJump = null;
+        if (n > 1)
+        {
+            sharedJump = new bool[n];
+            for (int i = 1; i < n; i++)
+            {
+                int chg = 0;
+                if (prices[i].stonePrice != prices[i - 1].stonePrice) chg++;
+                if (prices[i].copperPrice != prices[i - 1].copperPrice) chg++;
+                if (prices[i].ironPrice != prices[i - 1].ironPrice) chg++;
+                sharedJump[i] = chg >= 2;
+            }
+        }
+
         // 无网格线（用户反馈：数值位置的白线干扰；只保留坐标轴 + 刻度 + 阶跃曲线）
 
         // 坐标轴仅保留：X 轴（底部横线）+ Y 轴（左侧竖线），无顶/右边框。
@@ -271,9 +332,11 @@ public class PriceChartCard : MonoBehaviour
             }
 
         // 三条折线（粗 4px，缩放到显示尺寸后约 2px）
-        DrawSeries(tex, prices, p => p.stonePrice, STONE, PAD_LEFT, PAD_BOTTOM, plotW, plotH, maxPrice, 4);
-        DrawSeries(tex, prices, p => p.copperPrice, COPPER, PAD_LEFT, PAD_BOTTOM, plotW, plotH, maxPrice, 4);
-        DrawSeries(tex, prices, p => p.ironPrice, IRON, PAD_LEFT, PAD_BOTTOM, plotW, plotH, maxPrice, 4);
+        // 只在"同日多条同时涨跌"的日子错开跳变 x：石头-7 / 铜 0 / 铁 +7（纹理像素，缩到卡片后≈±2~3 屏显 px）；
+        // 单条变化的日子保持对齐刻度。
+        DrawSeries(tex, prices, p => p.stonePrice, STONE, PAD_LEFT, PAD_BOTTOM, plotW, plotH, maxPrice, 4, sharedJump, -4);
+        DrawSeries(tex, prices, p => p.copperPrice, COPPER, PAD_LEFT, PAD_BOTTOM, plotW, plotH, maxPrice, 4, sharedJump, 0);
+        DrawSeries(tex, prices, p => p.ironPrice, IRON, PAD_LEFT, PAD_BOTTOM, plotW, plotH, maxPrice, 4, sharedJump, 4);
 
         tex.Apply();
         return tex;
@@ -311,7 +374,7 @@ public class PriceChartCard : MonoBehaviour
     }
 
     static void DrawSeries(Texture2D t, List<DailyPrice> prices, Func<DailyPrice, int> get,
-        Color c, int padX, int padY, int plotW, int plotH, int maxPrice, int thick)
+        Color c, int padX, int padY, int plotW, int plotH, int maxPrice, int thick, bool[] sharedJump, int jumpXShift)
     {
         int n = prices.Count;
         if (n == 0) return;
@@ -336,7 +399,23 @@ public class PriceChartCard : MonoBehaviour
             int x = X(i), y = Y(get(prices[i]));
             DrawLine(t, prevX, prevY, x, prevY, c, thick);   // 水平段（保持 prevY）
             if (y != prevY)
-                DrawLine(t, x, prevY, x, y, c, thick);       // 竖直跳变（当天突变）
+            {
+                // 竖直跳变 x 微移：仅当"同日多条同时涨跌"(sharedJump[i]) 时按 jumpXShift 错开，
+                // 使各条脉冲不再完全重叠；单条变化日子不加偏移，脉冲对齐刻度。
+                int jx = (sharedJump != null && i < sharedJump.Length && sharedJump[i]) ? x + jumpXShift : x;
+                if (jx == x)
+                {
+                    DrawLine(t, x, prevY, x, y, c, thick);
+                }
+                else
+                {
+                    // 竖线被挪到 jx 时，补两段水平短连接（旧价线接到竖线、新价线从竖线接回），
+                    // 否则横线段与偏移后的竖线之间会留豁口（线宽盖不住 ±7 的间隙）。
+                    DrawLine(t, x, prevY, jx, prevY, c, thick);   // 旧价水平：闭合下方直角
+                    DrawLine(t, jx, prevY, jx, y, c, thick);     // 竖直跳变（偏移后的竖线）
+                    DrawLine(t, x, y, jx, y, c, thick);          // 新价水平回填：闭合上方直角
+                }
+            }
             prevX = x;
             prevY = y;
         }
@@ -401,6 +480,12 @@ public class PriceChartCard : MonoBehaviour
         t.font = font;
         t.fontSize = fontSize;
         t.alignment = align;
+        // 关键：uGUI Text 默认 verticalOverflow=Truncate。NotoSC 字号 15 的行高略大于 22px，
+        // 而轴标签的 rect 是 36×22 —— TextGenerator 认为"整行放不进 22px 高度"→ 生成 0 个字符，
+        // 数字全部不渲染（曲线是 RawImage 纹理不受影响）。改 Overflow 让字形正常生成，
+        // 视觉位置仍由 pivot/alignment 锚定，不受 rect 裁切影响。
+        t.horizontalOverflow = HorizontalWrapMode.Overflow;
+        t.verticalOverflow = VerticalWrapMode.Overflow;
         t.color = color;
         t.raycastTarget = false;
         return t;
