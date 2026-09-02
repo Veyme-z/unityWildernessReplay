@@ -60,6 +60,8 @@ public class PrefabRefs : MonoBehaviour
     public GameObject taskPanelReasoningPrefab;
     [Tooltip("长上下文任务面板（右上角，世界新闻【民间传闻】）")]
     public GameObject taskPanelLongContextPrefab;
+    [Tooltip("资源价格走势卡片（右上角，折线图）")]
+    public GameObject priceChartPrefab;
 
     // ═══════════════════════════════════════════════
     // 单例
@@ -128,6 +130,7 @@ public class PrefabRefs : MonoBehaviour
     const string RES_SETTLEMENT = "Prefabs/UI/SettlementPanel";
     const string RES_TASK_REASONING = "Prefabs/UI/TaskPanelReasoning";
     const string RES_TASK_LONGCTX = "Prefabs/UI/TaskPanelLongContext";
+    const string RES_PRICE_CHART = "Prefabs/UI/PriceChartCard";
 
     /// <summary>
     /// 获取单位 prefab：先查 Inspector 引用 → 再查 Resources。
@@ -169,5 +172,12 @@ public class PrefabRefs : MonoBehaviour
         if (kind == TaskPanelKind.Reasoning)
             return taskPanelReasoningPrefab != null ? taskPanelReasoningPrefab : Resources.Load<GameObject>(RES_TASK_REASONING);
         return taskPanelLongContextPrefab != null ? taskPanelLongContextPrefab : Resources.Load<GameObject>(RES_TASK_LONGCTX);
+    }
+
+    /// <summary>获取资源价格走势卡片 prefab：先查 Inspector 引用 → 再查 Resources。</summary>
+    public GameObject GetPriceChartPrefab()
+    {
+        if (priceChartPrefab != null) return priceChartPrefab;
+        return Resources.Load<GameObject>(RES_PRICE_CHART);
     }
 }

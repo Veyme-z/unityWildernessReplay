@@ -8,7 +8,7 @@ using UnityEngine.EventSystems;
 /// </summary>
 public class ReplayPlayer : MonoBehaviour, IReplayHost
 {
-    public static readonly float[] SPEEDS = { 0.25f, 0.5f, 1f, 2f, 4f, 8f, 16f, 32f };
+    public static readonly float[] SPEEDS = { 0.5f, 1f, 2f, 5f };   // 0→0.5x 1→1x 2→2x 3→5x（面板 Sp1 在 1x↔0.5x、Sp2 在 2x↔5x 间循环）
 
     [Header("播放参数")]
     public float baseRoundDuration = 0.5f;   // 1x 速度下每回合秒数
@@ -24,7 +24,7 @@ public class ReplayPlayer : MonoBehaviour, IReplayHost
 
     public int cur { get; private set; }
     public bool playing { get; private set; }
-    public int speedIndex { get; private set; } = 3;   // 默认 2x
+    public int speedIndex { get; private set; } = 1;   // 默认 1x
 
     float _acc;
     float RoundDur { get { return baseRoundDuration / SPEEDS[speedIndex]; } }
@@ -304,11 +304,15 @@ void OnRoundEntered(int n)
                         }
                         else if (u.type == 32)
                         {
-                            // 火箭发射台：无弹道，落点中心爆炸（3×3 AoE）+ 震屏
+                            // 火箭发射台：火箭飞向落点，到达后爆炸（3×3 AoE）+ 震屏由 TowerVisualController 在火箭到达时触发
                             u.view.TriggerTowerAttack(wp);
-                            FxFactory.PlayBombEffect(wp);
-                            if (CameraManager.Instance != null)
-                                CameraManager.Instance.CameraShake(0.4f, 0.25f);
+                            // 塔视觉未就绪（火箭无法飞行）时兜底直接爆炸
+                            if (!u.view.IsTowerVisualReady)
+                            {
+                                FxFactory.PlayBombEffect(wp);
+                                if (CameraManager.Instance != null)
+                                    CameraManager.Instance.CameraShake(0.4f, 0.25f);
+                            }
                         }
                         else
                         {

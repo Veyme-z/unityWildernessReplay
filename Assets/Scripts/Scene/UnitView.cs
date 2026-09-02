@@ -285,6 +285,9 @@ public partial class UnitView : MonoBehaviour
     {
         if (state == null) return;
 
+        // 武器工事等级变化 → 换对应等级塔模型（_1/_2/_3）
+        if (state.IsTower) RefreshTowerLevelVisual();
+
         // ── 位置（仅变化时写入，静止单位跳过每帧 Transform 刷新） ──
         Vector3 newPos = state.pos;
         Vector3 moveDir = newPos - _prevPos;

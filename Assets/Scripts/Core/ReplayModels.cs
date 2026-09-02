@@ -31,7 +31,10 @@ public class ReplayRound
     public int round;
     public List<ReplayResource> resources = new List<ReplayResource>();
     public List<ReplayNpc> npc = new List<ReplayNpc>();
-    public List<ReplayNews> news = new List<ReplayNews>();
+    public List<ReplayNews> news = new List<ReplayNews>(); // 旧数组格式（保留兼容）
+    // 新对象格式：news.officialNews = 官方消息（推理类任务）；news.folkLegends = 民间传闻（长上下文任务）
+    public string officialNews = "";
+    public string folkLegends = "";
     public List<ReplayVendorShop> vendorShopList = new List<ReplayVendorShop>(); // 小贩矿石回收价（stone/iron/copper），受世界新闻波动
     public List<ReplayTeam> teams = new List<ReplayTeam>();
 }

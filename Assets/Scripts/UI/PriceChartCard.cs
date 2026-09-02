@@ -76,12 +76,12 @@ public class PriceChartData
                 ironPrice = iron
             });
 
-        // 若存在 stopDay 波动窗口 → 只保留 day ≤ stopDay 的天（X 轴显示到波动结束为止）
+        // 若存在 stopDay 波动窗口 → 保留 day ≤ stopDay+1 的天（X 轴比波动结束多显示 1 天，看到恢复）
         if (chart.windowEndDay > 0)
         {
             var filtered = new List<DailyPrice>();
             foreach (var dp in chart.dailyPrices)
-                if (dp.day <= chart.windowEndDay) filtered.Add(dp);
+                if (dp.day <= chart.windowEndDay + 1) filtered.Add(dp);
             chart.dailyPrices = filtered;
         }
 
@@ -90,9 +90,11 @@ public class PriceChartData
 }
 
 /// <summary>
-/// 资源价格折线图卡片：右上角（任务面板下方）展示 石头/铜/铁 的每日小贩回收价走势。
-/// 与 TaskPanelController 一致：纯代码搭建 UGUI（Canvas + RawImage 展示程序化生成的折线 Texture2D），无需 prefab。
-/// 颜色：石头=灰、铜=橙、铁=红。
+/// 资源价格折线图卡片：右上角（任务面板下方）展示 石头/铜/铁 的每日小贩回收价走势（阶跃函数）。
+/// Prefab 是真源（场景 PrefabRefs.priceChartPrefab 按 GUID 引用，缺失时 Create() 报错返回 null）。
+/// 静态布局（标题/单位标注/图例/图表区位置）在 prefab 中，用户可直接调；只有图表纹理 + 数值/天数轴标签
+/// 由代码从 replay 的 vendorShopList 聚合绘制（PriceChartData.FromReplay → RenderChart → AddAxisLabels）。
+/// 颜色：石头=紫、铜=橙、铁=红。
 /// </summary>
 public class PriceChartCard : MonoBehaviour
 {
@@ -115,7 +117,8 @@ public class PriceChartCard : MonoBehaviour
     const int PAD_TOP = 18;
     const int PAD_BOTTOM = 46;
 
-    /// <summary>创建资源价格卡片。返回 null 表示回放无 round 数据（不创建）。</summary>
+    /// <summary>创建资源价格卡片（prefab 是真源：静态布局在 prefab 中，用户可直接调标题/单位/图例/图表区位置；
+    /// 只有图表纹理 + 数值/天数轴标签由代码从 replay 读取绘制）。返回 null 表示回放无价格数据。</summary>
     public static PriceChartCard Create(ReplayPlayer player)
     {
         if (player == null || player.data == null || player.data.rounds == null || player.data.rounds.Count == 0)
@@ -124,64 +127,16 @@ public class PriceChartCard : MonoBehaviour
         var chartData = PriceChartData.FromReplay(player.data);
         if (chartData.dailyPrices.Count == 0) return null;
 
-        var font = UiFonts.Get();
-
-        // ── 独立 Canvas（左上角任务面板 215/216 之上无重叠，此处仅需高于事件日志） ──
-        var canvasGo = new GameObject("PriceChartCanvas");
-        var canvas = canvasGo.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 211;
-        var scaler = canvasGo.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920, 1080);
-        scaler.matchWidthOrHeight = 0.5f;
-        canvasGo.AddComponent<GraphicRaycaster>();
-
-        // ── 面板（右上角；旧任务面板已移至左上角，此处不再有上方任务面板） ──
-        var panelGo = new GameObject("Panel");
-        panelGo.transform.SetParent(canvasGo.transform, false);
-        var rt = panelGo.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(1, 1);
-        rt.anchorMax = new Vector2(1, 1);
-        rt.pivot = new Vector2(1, 1);
-        rt.anchoredPosition = new Vector2(-10, -256);
-        rt.sizeDelta = new Vector2(340, 240);   // 加宽留出 Y 轴数值标签
-        var panelImg = panelGo.AddComponent<Image>();
-        panelImg.color = new Color(0.102f, 0.102f, 0.118f, 0.85f);
-        panelImg.raycastTarget = false;
-
-        // ── 标题 ──
-        var title = MakeText(panelGo.transform, "Title", "资源价格走势", font, 15,
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -6), new Vector2(280, 22),
-            Color.white, TextAnchor.MiddleCenter);
-
-        // ── 图表区（RawImage + Y 轴标签） ──
-        var chartGo = new GameObject("Chart");
-        chartGo.transform.SetParent(panelGo.transform, false);
-        var crt = chartGo.AddComponent<RectTransform>();
-        crt.anchorMin = new Vector2(0.5f, 0.5f);
-        crt.anchorMax = new Vector2(0.5f, 0.5f);
-        crt.pivot = new Vector2(0.5f, 0.5f);
-        crt.anchoredPosition = new Vector2(0, 8);
-        crt.sizeDelta = new Vector2(280, 168);
-        var raw = chartGo.AddComponent<RawImage>();
-        raw.raycastTarget = false;
-
-        // ── 无数据提示（默认隐藏） ──
-        var emptyLabel = MakeText(panelGo.transform, "Empty", "本回放不含小贩回收价数据", font, 13,
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 0), new Vector2(280, 80),
-            new Color(0.7f, 0.68f, 0.62f), TextAnchor.MiddleCenter);
-        emptyLabel.gameObject.SetActive(false);
-
-        // ── 图例（底部：色块 + 名称） ──
-        MakeLegendItem(panelGo.transform, "石头", STONE, -90, font);
-        MakeLegendItem(panelGo.transform, "铜", COPPER, 0, font);
-        MakeLegendItem(panelGo.transform, "铁", IRON, 90, font);
-
-        var ctrl = panelGo.AddComponent<PriceChartCard>();
-        ctrl._title = title;
-        ctrl._chartImage = raw;
-        ctrl._emptyLabel = emptyLabel;
+        var prefab = PrefabRefs.Instance.GetPriceChartPrefab();
+        if (prefab == null)
+        {
+            Debug.LogError("[PriceChartCard] 缺少 PriceChartCard prefab（请检查场景 PrefabRefs.priceChartPrefab），资源价格卡片未创建。");
+            return null;
+        }
+        var go = UnityEngine.Object.Instantiate(prefab);
+        UiFonts.Apply(go.transform);   // 覆盖 prefab 里烘焙的旧字体
+        var ctrl = go.GetComponentInChildren<PriceChartCard>();
+        if (ctrl == null) ctrl = go.AddComponent<PriceChartCard>();
         ctrl.Render(chartData);
         return ctrl;
     }
@@ -215,9 +170,9 @@ public class PriceChartCard : MonoBehaviour
         int plotW = TEX_W - PAD_LEFT - PAD_RIGHT;
         int plotH = TEX_H - PAD_TOP - PAD_BOTTOM;
         Font font = UiFonts.Get();
-        // 与标题"资源价格走势"一致：NotoSansSC / 15 / 白色（用户可见性要求）
+        // 标签样式参考长上下文正文颜色（柔和灰，非纯白）
         const int labelFontSize = 15;
-        var labelColor = Color.white;
+        var labelColor = new Color(0.75f, 0.73f, 0.68f);
 
         // Y 轴数值标签（含 0 和 max），贴在绘图区左侧。
         // 关键：锚点用图表中心 (0.5,0.5)，anchoredPosition 才按中心坐标算（与 lx/ly 一致），
@@ -229,10 +184,11 @@ public class PriceChartCard : MonoBehaviour
             float lx = (PAD_LEFT - TEX_W * 0.5f) * sx - 6f;
             MakeText(rt, "Y_" + v, v.ToString(), font, labelFontSize,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(1f, 0.5f),
-                new Vector2(lx, ly), new Vector2(40, 22), labelColor, TextAnchor.MiddleRight);
+                new Vector2(lx, ly), new Vector2(36, 22), labelColor, TextAnchor.MiddleRight);
         }
 
         // X 轴天数标签（步进 dayStep；最后一个数据点也补一个），锚点同为图表中心
+        // 注：横坐标"单位：天"是 prefab 元素（用户可在 prefab 调位置），不在此创建
         int n = prices.Count;
         for (int d = 0; d < n; d += dayStep)
             AddXDayLabel(rt, prices[d], d, n, plotW, sx, sy, font, labelColor);
@@ -247,7 +203,7 @@ public class PriceChartCard : MonoBehaviour
         float ly = (PAD_BOTTOM - TEX_H * 0.5f) * sy - 13f;   // 绘图区底边之下
         MakeText(rt, "X_" + p.day, p.day.ToString(), font, 15,
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 1f),
-            new Vector2(lx, ly), new Vector2(52, 22), color, TextAnchor.MiddleCenter);
+            new Vector2(lx, ly), new Vector2(36, 22), color, TextAnchor.MiddleCenter);
     }
 
     // ---------- 图表渲染（Texture2D 程序化绘制） ----------
@@ -270,6 +226,7 @@ public class PriceChartCard : MonoBehaviour
         }
         maxPrice = NiceCeil(maxVal);
         yStep = NiceYStep(maxPrice);
+        maxPrice += yStep;   // 纵坐标顶部多一个单位（金币），数据不再顶格
         dayStep = NiceDayStep(prices.Count);
 
         var tex = new Texture2D(texW, texH, TextureFormat.RGBA32, false);
@@ -285,34 +242,18 @@ public class PriceChartCard : MonoBehaviour
         int plotW = texW - PAD_LEFT - PAD_RIGHT;
         int plotH = texH - PAD_TOP - PAD_BOTTOM;
 
-        var grid = new Color(1f, 1f, 1f, 0.14f);
-        var axis = new Color(1f, 1f, 1f, 0.8f);    // 坐标轴主线：亮、明显
-        var tick = new Color(1f, 1f, 1f, 0.55f);   // 刻度线
+        var axis = new Color(1f, 1f, 1f, 0.5f);    // 坐标轴主线：柔和不刺眼
+        var tick = new Color(1f, 1f, 1f, 0.4f);    // 刻度线
         int n = prices.Count;
 
-        // 横向网格线（每 yStep 一条，淡）
-        for (int v = yStep; v < maxPrice; v += yStep)
-        {
-            int y = PAD_BOTTOM + Mathf.RoundToInt((float)v / maxPrice * plotH);
-            DrawHLine(tex, y, PAD_LEFT, PAD_LEFT + plotW, grid);
-        }
-        // 纵向网格线（每天 dayStep 一条，淡）；跳过最后一天（与右边框位置重合，避免看似右边线）
-        if (n > 1)
-            for (int d = 0; d < n; d += dayStep)
-            {
-                if (d == n - 1) continue;
-                int x = PAD_LEFT + Mathf.RoundToInt((float)d / (n - 1) * plotW);
-                DrawVLine(tex, x, PAD_BOTTOM, PAD_BOTTOM + plotH, grid);
-            }
+        // 无网格线（用户反馈：数值位置的白线干扰；只保留坐标轴 + 刻度 + 阶跃曲线）
 
-        // 坐标轴主线：X 轴（底横线）+ Y 轴（左竖线）。
-        // 纹理 560px 缩到屏幕 ~168px（总缩放 ~0.3），2px 细线缩放后亚像素被过滤看不见，
-        // 因此轴线加粗 8px（→ 屏幕 ~2.4px）且伸向留白区，不遮挡折线。
-        // 坐标轴仅保留：X 轴（底部横线）+ Y 轴（左侧竖线），无顶/右边框
-        for (int k = 0; k < 8; k++)
-            DrawHLine(tex, PAD_BOTTOM - k, PAD_LEFT, PAD_LEFT + plotW, axis);   // X 轴向下 8px
-        for (int k = 0; k < 8; k++)
-            DrawVLine(tex, PAD_LEFT - k, PAD_BOTTOM, PAD_BOTTOM + plotH, axis); // Y 轴向左 8px
+        // 坐标轴仅保留：X 轴（底部横线）+ Y 轴（左侧竖线），无顶/右边框。
+        // 与数据线同粗 4px（DrawSeries thick=4），alpha 0.5 柔和。
+        for (int k = 0; k < 4; k++)
+            DrawHLine(tex, PAD_BOTTOM - k, PAD_LEFT, PAD_LEFT + plotW, axis);   // X 轴向下 4px
+        for (int k = 0; k < 4; k++)
+            DrawVLine(tex, PAD_LEFT - k, PAD_BOTTOM, PAD_BOTTOM + plotH, axis); // Y 轴向左 4px
 
         // Y 轴刻度：从轴线向绘图区内伸 6px 短横线（标记数值位置）
         for (int v = 0; v <= maxPrice; v += yStep)
@@ -388,10 +329,14 @@ public class PriceChartCard : MonoBehaviour
 
         int prevX = X(0), prevY = Y(get(prices[0]));
         if (n == 1) { FillDisk(t, prevX, prevY, thick * 0.5f, c); return; }
+        // 阶跃函数（非线性过渡）：从 x[i-1] 到 x[i] 保持上一天价格（水平段），
+        // 在 x[i]（当天）处竖直跳变到新价格。如第 3 天价格上涨 → 第 3 天位置突变。
         for (int i = 1; i < n; i++)
         {
             int x = X(i), y = Y(get(prices[i]));
-            DrawLine(t, prevX, prevY, x, y, c, thick);
+            DrawLine(t, prevX, prevY, x, prevY, c, thick);   // 水平段（保持 prevY）
+            if (y != prevY)
+                DrawLine(t, x, prevY, x, y, c, thick);       // 竖直跳变（当天突变）
             prevX = x;
             prevY = y;
         }
@@ -439,34 +384,6 @@ public class PriceChartCard : MonoBehaviour
     }
 
     // ---------- UGUI 元素 ----------
-
-    static void MakeLegendItem(Transform parent, string label, Color color, float x, Font font)
-    {
-        var go = new GameObject("Legend_" + label);
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0.5f, 0f);
-        rt.anchorMax = new Vector2(0.5f, 0f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = new Vector2(x, 10);
-        rt.sizeDelta = new Vector2(80, 18);
-
-        var dot = new GameObject("Dot");
-        dot.transform.SetParent(go.transform, false);
-        var drt = dot.AddComponent<RectTransform>();
-        drt.anchorMin = new Vector2(0f, 0.5f);
-        drt.anchorMax = new Vector2(0f, 0.5f);
-        drt.pivot = new Vector2(0f, 0.5f);
-        drt.anchoredPosition = new Vector2(0, 0);
-        drt.sizeDelta = new Vector2(10, 10);
-        var img = dot.AddComponent<Image>();
-        img.color = color;
-        img.raycastTarget = false;
-
-        MakeText(go.transform, "L", label, font, 12,
-            new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(14, 0), new Vector2(60, 18),
-            new Color(0.85f, 0.85f, 0.85f), TextAnchor.MiddleLeft);
-    }
 
     static Text MakeText(Transform parent, string name, string text, Font font, int fontSize,
         Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, Color color, TextAnchor align)

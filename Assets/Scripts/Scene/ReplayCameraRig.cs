@@ -4,8 +4,9 @@ using UnityEngine.EventSystems;
 /// <summary>
 /// 电影级导演相机系统：Global / TeamA / TeamB / Free 之间平滑切换。
 /// Free 模式：左键平移 / Alt+左键(或Ctrl+左键)旋转 / 滚轮向鼠标位置缩放。
-/// 快捷键：1=全局  2=A队  3=B队  4=自由
-/// </summary>
+/// 快捷键：1=全局  2=A队  3=B队  4=自由。开局默认进入「自由」模式（面板 CamFree 按钮高亮），
+/// 初始机位 = 全局视角（Start 先 ApplyGlobalView 再进自由，避免垂直俯视推导出颠倒 180° 的 yaw）。
+///</summary>
 public class ReplayCameraRig : MonoBehaviour
 {
     public enum CameraMode { Global, TeamA, TeamB, Free }
@@ -80,7 +81,30 @@ public class ReplayCameraRig : MonoBehaviour
         _teamBTarget = CellToWorld(30, 10) + new Vector3(0.5f, 0, 0.5f);
 
         _initialized = true;
-        SetCameraMode("global");
+        // 开局默认「自由」相机（面板 CamFree 按钮高亮）。
+        // 先摆到全局视角再进自由：避免从开局垂直俯视机位（0,40,-8）推导出颠倒 180° 的 yaw，
+        // 保证自由视角初始位置与全局视角一致。
+        ApplyGlobalView();
+        SetCameraMode("free");
+    }
+
+    /// <summary>把相机摆到全局视角机位（position = globalPositionOverride、rotation = 全局俯角），并同步 desired。</summary>
+    void ApplyGlobalView()
+    {
+        if (globalPositionOverride != Vector3.zero)
+        {
+            transform.position = globalPositionOverride;
+            transform.rotation = Quaternion.Euler(globalPitch, 0f, 0f);
+        }
+        else
+        {
+            float pitchRad = globalPitch * Mathf.Deg2Rad;
+            float horizDist = globalHeight / Mathf.Tan(pitchRad);
+            transform.position = _globalTarget + new Vector3(0f, globalHeight, -horizDist);
+            transform.rotation = Quaternion.LookRotation(_globalTarget - transform.position, Vector3.up);
+        }
+        _desiredPosition = transform.position;
+        _desiredRotation = transform.rotation;
     }
 
     // ——— 公开 API ———
@@ -102,6 +126,21 @@ public class ReplayCameraRig : MonoBehaviour
                 return;
         }
         UpdateDesiredTransform();
+    }
+
+    /// <summary>当前镜头模式标签（"global"/"teamA"/"teamB"/"free"），供底部面板高亮对应按钮。</summary>
+    public string CurrentModeName
+    {
+        get
+        {
+            switch (_mode)
+            {
+                case CameraMode.TeamA: return "teamA";
+                case CameraMode.TeamB: return "teamB";
+                case CameraMode.Free:  return "free";
+                default: return "global";
+            }
+        }
     }
 
     public void Focus(Vector3 t, float distance) { }
@@ -168,6 +207,8 @@ public class ReplayCameraRig : MonoBehaviour
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             return;
 
+        bool interacted = false;   // 本帧是否有实际输入（夹紧只跟随交互，静止时保持开局视角）
+
         // 旋转修饰键：Alt 或 Ctrl 按住 + 左键拖拽 = 旋转（规避 WebGL 浏览器右键手势劫持）
         bool rotateModifier = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)
                            || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
@@ -183,6 +224,7 @@ public class ReplayCameraRig : MonoBehaviour
                 _desiredPitch -= dy * freeRotateSpeed;
                 _desiredPitch = Mathf.Clamp(_desiredPitch, freeMinPitch, freeMaxPitch);
             }
+            interacted = true;
         }
         // —— 左键拖动（无修饰键）：平移 pivot ——
         else if (Input.GetMouseButton(0))
@@ -196,6 +238,7 @@ public class ReplayCameraRig : MonoBehaviour
                 float scale = _desiredDistance * 0.003f * freePanSpeed;
                 _desiredPivot -= (right * dx + forward * dy) * scale;
             }
+            interacted = true;
         }
 
         // —— 滚轮：向鼠标位置缩放 ——
@@ -217,10 +260,12 @@ public class ReplayCameraRig : MonoBehaviour
                 }
                 _desiredDistance = newDist;
             }
+            interacted = true;
         }
 
-        // 可见范围夹紧：保证视野地面矩形不超出 48×40 框
-        ClampVisibleArea();
+        // 可见范围夹紧：保证视野地面矩形不超出 48×40 框。
+        // 只在有实际输入时夹紧——否则静止时会不断回拉，把开局（=全局视角）拉离原位。
+        if (interacted) ClampVisibleArea();
     }
 
     void UpdateFreeTransform()

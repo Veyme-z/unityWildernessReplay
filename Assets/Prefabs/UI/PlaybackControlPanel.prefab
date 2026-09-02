@@ -36,7 +36,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 10, y: -88}
-  m_SizeDelta: {x: 220, y: 34}
+  m_SizeDelta: {x: 220, y: 40}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &8102088415420564553
 CanvasRenderer:
@@ -241,9 +241,10 @@ MonoBehaviour:
   _playLabel: {fileID: 2238623803296606768}
   _speed1Btn: {fileID: 5372193392361645256}
   _speed2Btn: {fileID: 4254166337980978243}
-  _btnManual: {fileID: 0}
-  _btnAuto: {fileID: 0}
-  _directorStatus: {fileID: 0}
+  _camGlobalBtn: {fileID: 0}
+  _camABtn: {fileID: 0}
+  _camBBtn: {fileID: 0}
+  _camFreeBtn: {fileID: 0}
   _showStatsBtn: {fileID: 0}
   _volumeBtn: {fileID: 0}
 --- !u!1 &366102835157512286
@@ -372,7 +373,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 10, y: -130}
-  m_SizeDelta: {x: 320, y: 34}
+  m_SizeDelta: {x: 320, y: 3}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &7963823729771527917
 CanvasRenderer:
@@ -1341,7 +1342,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 10, y: -8}
-  m_SizeDelta: {x: 320, y: 22}
+  m_SizeDelta: {x: 320, y: 25}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &9125804341186861369
 CanvasRenderer:
@@ -4184,7 +4185,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 10, y: -88}
-  m_SizeDelta: {x: 220, y: 34}
+  m_SizeDelta: {x: 220, y: 40}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &8114757168305351648
 CanvasRenderer:
@@ -4384,7 +4385,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 10, y: -8}
-  m_SizeDelta: {x: 320, y: 22}
+  m_SizeDelta: {x: 320, y: 25}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &7671136634059153773
 CanvasRenderer:

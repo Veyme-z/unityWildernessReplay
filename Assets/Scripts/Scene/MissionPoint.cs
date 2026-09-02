@@ -23,6 +23,10 @@ public class MissionPoint : MonoBehaviour
     const float BADGE_SCALE = 1f;      // 徽标字号/底板（1 = 与工人购买面板同款大小）
 
     bool _busy;   // 正在售卖流程中（防重复触发/中途再开）
+    Vector3 _originPos;      // 原任务点位置（Seek 重置 / 重生破损车用）
+    Quaternion _originRot;
+    Vector3 _originScale;
+    TradeBadge _badge;       // 「贩卖成功」徽标引用（Seek 重置时销毁）
 
     /// <summary>装甲车售卖流程：破损→修复成完好→开向小贩→停留→消失→原任务点重生破损车。</summary>
     public void StartSellCycle(Vector3 vendorPos, ReplayPlayer player)
@@ -40,6 +44,9 @@ public class MissionPoint : MonoBehaviour
                 wmp.gameX = gameX; wmp.gameY = gameY;
                 wmp.isVehicle = true; wmp.isBroken = false;
                 wmp.prefabPath = prefabPath; wmp.workingPrefabPath = workingPrefabPath;
+                wmp._originPos = transform.position;   // 原任务点（Seek 重置 / 重生破损车用）
+                wmp._originRot = transform.rotation;
+                wmp._originScale = transform.localScale;
                 wmp.StartSellCycle(vendorPos, player);   // 完好卡车继续售卖流程
             }
             Destroy(gameObject);   // 移除破损卡车
@@ -57,6 +64,7 @@ public class MissionPoint : MonoBehaviour
         Vector3 originScale = transform.localScale;
         Transform parent = transform.parent;
         string objName = name;
+        _originPos = originPos; _originRot = originRot; _originScale = originScale;
 
         // 直线开向小贩，但在小贩坐标前 STOP_BEFORE_VENDOR 处停下（不压到小贩）。
         // 停点沿行进方向回退：两车按各自路径自然分开，且不旋转（初始车头已朝小贩）。
@@ -81,6 +89,7 @@ public class MissionPoint : MonoBehaviour
         // 避免继承卡车 0.27 缩放导致徽标突然放大/位置漂移；卡车消失后徽标独立淡出
         var badge = TradeBadge.ShowTextWorld(transform.parent,
             transform.position + Vector3.up * BADGE_Y, "贩卖成功", BADGE_SCALE);
+        _badge = badge;
         float wait = 0f;
         while (wait < SELL_HOLD)
         {
@@ -100,6 +109,28 @@ public class MissionPoint : MonoBehaviour
             mp.prefabPath = prefabPath; mp.workingPrefabPath = workingPrefabPath;
         }
         Destroy(gameObject);
+    }
+
+    /// <summary>Seek 跳回合时重置为原任务点的破损卡车：取消进行中的售卖协程、销毁徽标、
+    /// 若是完好车则重生破损车并销毁完好车。已破损且在原位则无操作。</summary>
+    public void ResetToBroken()
+    {
+        StopAllCoroutines();
+        _busy = false;
+        if (_badge != null) { Destroy(_badge.gameObject); _badge = null; }
+        if (!isBroken)
+        {
+            var newBroken = SpawnTruck(prefabPath, _originPos, _originRot, _originScale, transform.parent, name);
+            if (newBroken != null)
+            {
+                var mp = newBroken.GetComponent<MissionPoint>();
+                if (mp == null) mp = newBroken.AddComponent<MissionPoint>();
+                mp.gameX = gameX; mp.gameY = gameY;
+                mp.isVehicle = true; mp.isBroken = true;
+                mp.prefabPath = prefabPath; mp.workingPrefabPath = workingPrefabPath;
+            }
+            Destroy(gameObject);
+        }
     }
 
     /// <summary>按路径生成一辆任务点卡车（不装配 MissionPoint，调用方负责）。</summary>

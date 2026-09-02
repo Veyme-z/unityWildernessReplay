@@ -399,6 +399,8 @@ public class MuzzleFlashFx : MonoBehaviour
         float k = 1f - Mathf.Clamp01(_t / duration);
         if (_rend != null)
         {
+            // 防御：Start 未跑（_mpb 为 null）时兜底初始化，避免刷 NullReferenceException
+            if (_mpb == null) _mpb = new MaterialPropertyBlock();
             _mpb.SetColor("_Color", new Color(1f, 0.85f, 0.25f, k));
             _rend.SetPropertyBlock(_mpb);
         }

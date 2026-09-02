@@ -1,14 +1,14 @@
 # HUD / UI 结构审计
 
-> 结论先行：HUD **不是纯代码生成，也不是场景里摆好的 Canvas**，而是 **「场景里的 `PrefabRefs` 组件按 GUID 连线 6 个 UI Prefab → 各 Controller.Create() 实例化 → 运行时由代码回填文本/颜色」** 的实现。**纯代码兜底 `CreateFromCode()` 已全部删除**，Prefab 缺失时 `Create()` 直接 `LogError` 并返回 null。
+> 结论先行：HUD **不是纯代码生成，也不是场景里摆好的 Canvas**，而是 **「场景里的 `PrefabRefs` 组件按 GUID 连线 7 个 UI Prefab → 各 Controller.Create() 实例化 → 运行时由代码回填文本/颜色」** 的实现。**纯代码兜底 `CreateFromCode()` 已全部删除**，Prefab 缺失时 `Create()` 直接 `LogError` 并返回 null。
 
 ---
 
 ## 0. 关键事实
 
 - 启动场景 = `Assets/unknow.unity`（EditorBuildSettings 为空，编辑器当前打开哪个就起哪个）。
-- 场景根节点 `PrefabRefs`（`MonoBehaviour`）序列化了 6 个 UI Prefab 的 GUID；`PrefabRefs.Instance` 单例在 `Awake()` 里 `FindObjectOfType` 抓到它。
-- 6 个 UI Prefab 真实路径（**不在 Resources 下**，靠 GUID 引用，不是 `Resources.Load`）：
+- 场景根节点 `PrefabRefs`（`MonoBehaviour`）序列化了 7 个 UI Prefab 的 GUID；`PrefabRefs.Instance` 单例在 `Awake()` 里 `FindObjectOfType` 抓到它。
+- 7 个 UI Prefab 真实路径（**不在 Resources 下**，靠 GUID 引用，不是 `Resources.Load`）：
 
 | Prefab | 路径 | 实例化入口 |
 |---|---|---|
@@ -18,6 +18,7 @@
 | 结算 | `Assets/Prefabs/UI/SettlementPanel.prefab` | `SettlementPanelController.Create` |
 | 推理类任务 | `Assets/Prefabs/UI/TaskPanelReasoning.prefab` | `TaskPanelController.Create(player, TaskPanelKind.Reasoning)` |
 | 长上下文任务 | `Assets/Prefabs/UI/TaskPanelLongContext.prefab` | `TaskPanelController.Create(player, TaskPanelKind.LongContext)` |
+| 资源价格走势 | `Assets/Prefabs/UI/PriceChartCard.prefab` | `PriceChartCard.Create(player)` |
 
 - `PrefabRefs` 里 `baseBuilding/tower/wall/worker/pioneer/officer/vendor` 等字段均为 `{fileID:0}`（空），单位/建筑走 `UnitView` 的 `Resources.Load`，**与 UI 无关**。
 - 每个 Prefab 根都是一个**独立 Canvas**（ScreenSpaceOverlay，排序 200/210/220/500），互不嵌套。
@@ -40,7 +41,7 @@ TaskPanelReasoning(Canvas, 215)           ── 右上角：推理类任务（�
 └─ Panel(300×120, (-10,-10)) ─ Title(【推理类任务】) + Body(官方消息正文)
 TaskPanelLongContext(Canvas, 216)         ── 右上角：长上下文任务（民间传闻）
 └─ Panel(300×106, (-10,-140)) ─ Title(【长上下文任务】) + Body(民间传闻正文)
-                                        （折线图 PriceChartCard(Canvas 211) 在 (-10,-256) 340×240，三面板右上角垂直堆叠不重叠；X 轴显示天数、Y 轴显示具体数值）
+                                        （折线图 PriceChartCard(Canvas 211) 在 (-10,-490) 300×240，宽度与任务面板一致；X 轴显示天数、Y 轴显示具体数值）
 
 PlaybackControlPanel(Canvas, 220)         ── 底部
 ├─ TeamBar(HLG) ─ RedCard ─ RN/RH/RG/RS/RTw/RWl/RMm/RTk/RBg
@@ -48,8 +49,8 @@ PlaybackControlPanel(Canvas, 220)         ── 底部
 │            ── 3. 左队  4. 右队（名称/基地/金币/积分/塔/墙/人数/任务/背包，纯文本）
 ├─ TimelineBar ─ RT(Text) + Slider       ── 9. "40 / 1300 回合" + 时间轴
 └─ ControlBar(HLG, 680) ─ Play/Restart/Sp1/Sp2/CamGlobal/CamA/CamB/CamFree/Btn_ShowStats
-                 + [动态] Btn_ModeManual/Btn_ModeAuto + DirectorStatus
                                               ── 10. 播放控制 + 镜头切换 + 调试显示
+                                              （当前镜头模式按钮由代码按 CurrentModeName 高亮，开局默认「自由」）
 
 SettlementPanel(Canvas, 500)              ── 结算（游戏结束才出现）
 └─ Bg(全屏黑) + Panel ─ Title/Score/RedResult/BlueResult/RestartBtn
@@ -68,7 +69,7 @@ SettlementPanel(Canvas, 500)              ── 结算（游戏结束才出现�
 | 8 | **角色数量** | RMm/BMm（Sync 填"人数 n/3"） | Prefab |
 | 9 | 任务/背包摘要 | RTk/RBg、BTk/BBg（Sync 填 allTaskInfo 两行"自进化1 完成X 失败Y 共Z / 自进化2 完成X 失败Y 共Z" / "背包 …"） | Prefab |
 | 10 | 播放进度/总回合 | RT + Slider | Prefab |
-| 11 | 播放控制+镜头按钮 | ControlBar（含 CamFree「自由」） | Prefab + 代码动态加 2 个导演按钮 |
+| 11 | 播放控制+镜头按钮 | ControlBar（含 CamFree「自由」） | Prefab；代码按 CurrentModeName 高亮当前镜头按钮 |
 
 ---
 
@@ -77,15 +78,16 @@ SettlementPanel(Canvas, 500)              ── 结算（游戏结束才出现�
 | 面板 | 实例化方法 | 运行时改 RectTransform? | 运行时改文本? | 运行时改颜色? | 改 Prefab 是否被覆盖 |
 |---|---|---|---|---|---|
 | HUD | `HudController.Create→GetHudPrefab` | 否 | 是（Day/Phase/Round 文本） | 是（Day/Phase 颜色每帧 Lerp） | 文本/两处颜色被覆盖；布局、字号、底图色、字体保留 |
-| 底部 | `PlaybackControlPanelController.Create` | 否 | 是（全部队数据+回合文本） | 部分（Play/Sp1/Sp2/Manual/Auto 按钮底 Image 色） | 队名/金币/积分/HP 文本被覆盖；队标签颜色、字号、坐标保留 |
+| 底部 | `PlaybackControlPanelController.Create` | 否 | 是（全部队数据+回合文本） | 部分（Play/Sp1/Sp2/镜头模式按钮底 Image 色） | 队名/金币/积分/HP 文本被覆盖；队标签颜色、字号、坐标保留 |
 | 结算 | `SettlementPanelController.Create` | 否 | 是（Setup 填 5 个文本） | 否 | 仅文本覆盖，样式全来自 Prefab |
 | 事件日志 | `EventLogPanelController.Create` | 否 | 是（AddEventLog 拼字符串） | 否 | 仅文本覆盖 |
 | 推理类任务 | `TaskPanelController.Create(Reasoning)` | 否 | 是（Body 填官方消息） | 否 | 仅正文覆盖，标题/颜色/布局来自 Prefab |
 | 长上下文任务 | `TaskPanelController.Create(LongContext)` | 否 | 是（Body 填民间传闻） | 否 | 仅正文覆盖，标题/颜色/布局来自 Prefab |
+| 资源价格走势 | `PriceChartCard.Create(player)` | 否 | 是（图表纹理 + 数值/天数轴标签动态生成） | 否 | 静态布局（标题/单位标注/图例/图表区位置）在 Prefab，用户可直接调 |
 
 **冲突点（同一属性 Prefab+代码都管）：**
 - `HudController`：`dayLabel.color` / `phaseLabel.color` 由代码 `_currentDayColor/_currentPhaseColor` Lerp 覆盖，Prefab 里设的 Day 橙/Phase 金只作初始值。
-- `PlaybackControlPanelController.Sync()`：Play/Speed 按钮 `Image.color` 由代码覆盖（播放中蓝/黄、倍速高亮），Prefab 按钮底色被压掉。
+- `PlaybackControlPanelController.Sync()`：Play/Speed 按钮 `Image.color` 由代码覆盖（播放中蓝/黄、倍速高亮），Prefab 按钮底色被压掉；`Update()` 另按 `ReplayCameraRig.CurrentModeName` 高亮当前镜头模式按钮（开局默认「自由」→ CamFree 蓝）。
 - 其余文本颜色（红名红、蓝名蓝、金币金、积分白）**只来自 Prefab**，代码 `Sync` 只改 `.text` 不动 `.color`。
 
 ---
@@ -185,8 +187,8 @@ ReplayEntry.LoadReplay() ─▶ PlaybackControlPanelController.Create(player)
   │   ├─ null → LogError 并 return null（CreateFromCode 兜底已删除）
   │   └─ 实例化 PlaybackControlPanel(Canvas, sortingOrder 220)
   │      └─ UiFonts.Apply()     // 全部 Text → NotoSansSC（CJK 字体，无 emoji 字形 → emoji 会变空白，故不用 emoji）
-  │      └─ AddDirectorUI()     // 动态加：Btn_ModeManual「手动」Btn_ModeAuto「自动」+ DirectorStatus 指示灯
-  │      └─ WireCallbacks()     // 按名字查 ControlBar 接线：Play/Restart/Sp1/Sp2/CamGlobal/CamA/CamB/CamFree/Btn_ShowStats/手动/自动 + Slider
+  │      └─ WireCallbacks()     // 按名字查 ControlBar 接线：Play/Restart/Sp1/Sp2/CamGlobal/CamA/CamB/CamFree/Btn_ShowStats + Slider
+  │      └─ Update 高亮镜头     // Update() 按 ReplayCameraRig.CurrentModeName 高亮当前镜头按钮（开局默认「自由」）
   │      └─ ResolveTextRefs()   // 按名字重解析 TeamBar/RedCard|BlueCard 下的文本引用（防序列化引用失效）
   │      └─ Sync(player)        // 立即填充一次数据
 ```
@@ -194,17 +196,17 @@ ReplayEntry.LoadReplay() ─▶ PlaybackControlPanelController.Create(player)
 **运行时状态：**
 - `Update()` 每帧调 `Sync()`（轮询式直读 `player.engine` 现场，非事件驱动）；拖 Slider → `SetPlaying(false)+JumpTo`，下一帧自然刷新。
 - `Sync()` 写：队名/基地 HP/金币/积分/围墙/防御塔/**人数**/任务进度（allTaskInfo 自进化类1/2 每类"完成X 失败Y 共Z"两行）/背包 + 回合数 + Slider.max + Play/Speed 按钮底色。
-- `Update()` 还管：Auto 模式呼吸灯（DirectorStatus）与「手动/自动」按钮高亮。
-- 镜头按钮 → `ReplayCameraRig.SetCameraMode("global"/"teamA"/"teamB"/"free")`；键盘 1/2/3/4 同源（见 ReplayCameraRig.Update）。自由 = "free"（左键平移、Alt/Ctrl+左键旋转、滚轮缩放）。
+- `Update()` 还管：按 `ReplayCameraRig.CurrentModeName` 高亮当前镜头模式按钮（选中=蓝，其余暗底）。**开局默认「自由」**：`ReplayCameraRig.Start` → `SetCameraMode("free")`，故 CamFree 按钮开局即亮。
+- 镜头按钮 → `ReplayCameraRig.SetCameraMode("global"/"teamA"/"teamB"/"free")`；键盘 1/2/3/4 同源（见 ReplayCameraRig.Update）。自由 = "free"（左键平移、Alt/Ctrl+左键旋转、滚轮缩放）。已取消「手动/自动」智能导播按钮与 DirectorStatus 指示灯（CameraManager 保留但无入口触发 Auto，默认 Manual 静默）。
 
 **Prefab vs 代码归属（本面板）：**
 
 | 项目 | 归属 |
 |---|---|
 | 布局 / 面板尺寸 / 坐标 | Prefab（代码不覆盖；ControlBar 680×50，TeamBar 与 ControlBar 用 HorizontalLayoutGroup 自动排布；2026-09-01 任务行改两行后 TeamBar 720×180 + HLG `childForceExpandHeight=true`（卡片拉伸到全高覆盖内容），RTk/BTk 34px（两行），RBg/BBg 34px @ y=-130（两行）+ 顶部对齐 + vOverflow=Overflow 防背包裁剪；卡片 340×174 刚好覆盖内容，底部留白 ~10px） |
-| 静态颜色（队名红蓝/金币金/积分白）、字号、按钮标签（播放/重播/1x/2x/全局/蓝方/红方/自由） | Prefab |
+| 静态颜色（队名红蓝/金币金/积分白）、字号、按钮标签（播放/重播/全局/蓝方/红方/自由） | Prefab；倍速按钮文字（0.5x/1x/2x/5x）由代码 `Sync()` 覆盖 |
 | 全部文本内容 | 代码 `Sync()` / `Update()` 运行时回填 |
-| Play/Sp1/Sp2/手动/自动 按钮底色 | 代码覆盖（播放中蓝/黄、倍速高亮、导播模式高亮） |
+| Play/Sp1/Sp2/镜头模式按钮底色 | 代码覆盖（播放中蓝/黄、倍速高亮、当前镜头模式蓝） |
 | 字体 | 代码 `UiFonts.Apply()` 统一替换为 NotoSansSC |
 
 **近期变更（2026-08）：**
@@ -214,6 +216,11 @@ ReplayEntry.LoadReplay() ─▶ PlaybackControlPanelController.Create(player)
 - **移除全部 emoji**：`PlaybackControlPanelController`/`SettlementPanelController`/`EventLogPanelController` 代码与 `SettlementPanel.prefab`/`EventLogPanel.prefab` 全部改纯中文文本。
 - **删除旧资产**：`Assets/Prefabs/UI/Legacy/`（`HudPanel_Legacy`、`PlaybackControlPanel_Legacy` 两个无引用旧 prefab）。
 - **删除死代码**：Hud/EventLog/Playback/Settlement 4 个 Controller 的 `CreateFromCode()` 纯代码兜底及不再使用的 helper（Create 改缺 prefab 时报错；调用处已补 null 保护）。
+
+**近期变更（2026-09）：**
+- **取消「手动/自动」智能导播按钮与 DirectorStatus 指示灯**：删除 `AddDirectorUI()`/`MakeBtn()`，`WireCallbacks` 不再接线；`CameraManager` 保留但无入口触发 Auto（默认 Manual 静默，仍响应 ReplayPlayer 的 news/震屏调用但 `currentMode` 恒 Manual）。
+- **开局默认「自由」镜头**：`ReplayCameraRig.Start` 由 `SetCameraMode("global")` 改为 `SetCameraMode("free")`，且先 `ApplyGlobalView()` 把相机摆到全局机位（position=globalPositionOverride、rot=globalPitch），再进自由——避免从开局垂直俯视机位推导出颠倒 180° 的 yaw，保证**开局自由视角 = 全局视角**；`HandleFreeInput` 的 `ClampVisibleArea()` 改为只在有实际输入（拖拽/滚轮）时夹紧，静止时不再回拉偏离开局视角。`PlaybackControlPanelController.Update()` 新增 `UpdateCameraModeHighlight()`，按 `ReplayCameraRig.CurrentModeName` 高亮当前镜头模式按钮（选中=蓝，与倍速高亮一致；其余恢复 prefab 暗底 0.22,0.22,0.28）。键盘 1/2/3/4 切换同样会实时更新高亮。
+- **倍速按钮改为循环切换**：`ReplayPlayer.SPEEDS` 精简为 `{0.5,1,2,5}`，`speedIndex` 默认 1（**初始 1×**）。`PlaybackControlPanelController` 的 Sp1 点击在 **1×↔0.5×**、Sp2 点击在 **2×↔5×** 间循环（各自独立记忆档位），按钮文字（`Sp1/L`、`Sp2/L`）随档位更新为 `0.5×/1×/2×/5×`；高亮 = 当前激活的速度组（Sp1 组=index0/1、Sp2 组=index2/3）。
 
 ---
 
@@ -239,7 +246,7 @@ ReplayEntry.LoadReplay() ─▶ TaskPanelController.Create(player, TaskPanelKind
   - 向前扫描 → 非新闻回合不闪"暂无"，播放推进时保持显示该回合最新新闻；Seek/JumpTo 到任意回合按目标回合重建。
   - 类别匹配（`Matches`）：`type`/`text` 含「官方」→推理类；含「民间/传闻」→长上下文（启发式，判题器下发具体 type 时只需改这一处）。
   - 找不到 → 显示「暂无官方消息」/「暂无民间传闻」。
-- **布局**：两个面板 + 折线图在右上角垂直堆叠（anchor(1,1) pivot(1,1)）：推理类 (-10,-10) 300×120、长上下文 (-10,-140) 300×106、PriceChartCard (-10,-256) 340×240，互不重叠、与左侧事件日志无 x 冲突。折线图 X 轴显示天数、Y 轴显示具体数值（[PriceChartCard.cs](../Assets/Scripts/UI/PriceChartCard.cs) 代码生成）。
+- **布局**：两个任务面板 + 折线图在右上角垂直堆叠（anchor(1,1) pivot(1,1)），宽度统一 300：推理类 (-10,-10) 300×190、长上下文 (-10,-210) 300×270（可容纳最长 293 字民间传闻）、PriceChartCard (-10,-490) 300×240（图表 270 宽右移 14px 给 Y 轴标签留位）。折线图 X 轴显示天数、Y 轴显示具体数值（[PriceChartCard.cs](../Assets/Scripts/UI/PriceChartCard.cs) 代码生成）。
 - **当前数据现状（2026-09-01）**：所有 replay 的 `round.news` 均为空数组（推理类/长上下文任务经世界新闻下发，判题器暂未输出），面板显示占位文案；`vendorShopList` 也为空。用户后续更新 replay 数据后即可自动显示。
 - `ReplayPlayer.JumpTo` → `cur` 变化 → 下一帧 `Update()` 自然刷新（与其余面板同模式）。
 

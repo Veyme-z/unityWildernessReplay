@@ -58,24 +58,31 @@ public class TaskPanelController : MonoBehaviour
         if (_body != null) _body.text = FindLatestNews(round);
     }
 
-    /// <summary>从当前回合向前扫描，返回最近一条匹配本面板类别的新闻正文；没有则返回占位文案。</summary>
+    /// <summary>从当前回合向前扫描，返回最近一条匹配本面板类别的新闻正文；没有则返回占位文案。
+    /// 新格式直接读 news.officialNews（推理类）/ news.folkLegends（长上下文）；
+    /// 旧数组格式 news[] 按关键词兜底。</summary>
     string FindLatestNews(int round)
     {
         for (int r = round; r >= 1; r--)
         {
             var rr = _player.data.rounds[r - 1];
-            if (rr == null || rr.news == null) continue;
-            for (int i = rr.news.Count - 1; i >= 0; i--)
-            {
-                var n = rr.news[i];
-                if (n == null || string.IsNullOrEmpty(n.text)) continue;
-                if (Matches(n)) return n.text;
-            }
+            if (rr == null) continue;
+            // 新对象格式：官方消息 / 民间传闻
+            string text = _kind == TaskPanelKind.Reasoning ? rr.officialNews : rr.folkLegends;
+            if (!string.IsNullOrEmpty(text)) return text;
+            // 兼容旧数组格式
+            if (rr.news != null)
+                for (int i = rr.news.Count - 1; i >= 0; i--)
+                {
+                    var n = rr.news[i];
+                    if (n == null || string.IsNullOrEmpty(n.text)) continue;
+                    if (Matches(n)) return n.text;
+                }
         }
         return _kind == TaskPanelKind.Reasoning ? "暂无官方消息" : "暂无民间传闻";
     }
 
-    /// <summary>类别匹配：官方消息→推理类；民间传闻→长上下文（type 或 text 含关键词即命中）。</summary>
+    /// <summary>类别匹配（仅旧数组格式用）：官方消息→推理类；民间传闻→长上下文（type 或 text 含关键词即命中）。</summary>
     bool Matches(ReplayNews n)
     {
         string type = n.type ?? "";

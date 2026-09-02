@@ -1,7 +1,7 @@
 # WildernessReplay 项目状态
 
 > **用途**：供新会话的 AI 快速理解项目全貌。原则：说清是什么、在哪改，不堆细节。
-> **最后更新**：2026-09-01
+> **最后更新**：2026-09-02
 ---
 
 ## 一、项目是什么
@@ -103,9 +103,18 @@ Resources/Prefabs/
 ```
 - 均为包装 Prefab（根节点 + `Model` 子节点）。适配详情见 [资源问题与解决方案.md](资源问题与解决方案.md)。
 - **摆放**（`SceneBuilder.BuildMissionPoint`）：地图 tile 40/42 → 宝箱、41/43 → 装甲车，位置 = 格子中心世界坐标（game 坐标 (14,14)(23,14) 宝箱、(17,17)(26,17) 装甲车）。装甲车 `VEHICLE_SCALE=0.27`（约 0.74×1.44m，车头+Z），用 `LookRotation` 使车头朝小贩(tile 9)。当前 replay.txt 已含这 4 个 marker tile。任务点根节点挂 `MissionPoint` 组件（记 gameX/Y、isVehicle）。
-- **任务完成售卖**（2026-09-01，`MissionVehicleDriver` + `MissionPoint.StartSellCycle`）：任务点初始/重生形态是**破损卡车**（`broken_K151ArmoredVehicle.prefab`）；各队「自进化类2」任务（`TaskCardBadge.REPAIR_TASK_TYPE`）完成跳变时，按任务 `task.pos`（ReplayTask 已解析）定位对应卡车：**破损→在原任务点换成完好卡车**（`K151ArmoredVehicle.prefab`）→ **直线开向小贩、小贩前 `STOP_BEFORE_VENDOR=1.2m` 停下**（不调头不压到小贩）→ 卡车上显示「贩卖成功」徽标（`TradeBadge.ShowTextWorld`：挂到 scale=1 的地图根 + 世界坐标定位卡车上方 0.8m，**不继承卡车 0.27 缩放**——否则弹出/上浮动画会被放大、位置漂移；工人购买面板同款字号/黑底板自适应，1.5s 后独立淡出）→ 消失 → **原任务点重生破损车**（供下次任务）；暂停冻结。
+- **任务完成售卖**（2026-09-01，`MissionVehicleDriver` + `MissionPoint.StartSellCycle`）：任务点初始/重生形态是**破损卡车**（`broken_K151ArmoredVehicle.prefab`）；各队「自进化类2」任务（`TaskCardBadge.REPAIR_TASK_TYPE`）完成跳变时，按任务 `task.pos`（ReplayTask 已解析）定位对应卡车：**破损→在原任务点换成完好卡车**（`K151ArmoredVehicle.prefab`）→ **直线开向小贩、小贩前 `STOP_BEFORE_VENDOR=1.2m` 停下**（不调头不压到小贩）→ 卡车上显示「贩卖成功」徽标（`TradeBadge.ShowTextWorld`：挂到 scale=1 的地图根 + 世界坐标定位卡车上方 0.8m，**不继承卡车 0.27 缩放**——否则弹出/上浮动画会被放大、位置漂移；工人购买面板同款字号/黑底板自适应，1s 后销毁）→ 消失 → **原任务点重生破损车**（供下次任务）；暂停冻结。**Seek 重置**：`MissionVehicleDriver` 检测「暂停 && cur 变化」→ `MissionPoint.ResetToBroken` 取消售卖协程、销毁徽标、完好车重生破损车，杜绝跳回未完成任务回合还继续跑售卖效果。
 
-### 防御塔（Cube Tower Defense，已转 Built-in）
+### 防御塔（SciFiStrategyLowPoly，2026-09-02 替换 CubeTowerDefense）
+- **源素材**：`Assets/SciFiStrategyLowPoly/`。唯一共享材质 `Materials/Main.mat` 是 **Built-in 目标**的 Shader Graph（非 URP），工程装了免费包 `com.unity.shadergraph` 14.0.12 后强制重导即可编译，无需烘焙/remap（修复详情见 [资源问题与解决方案.md](资源问题与解决方案.md) 第一节）。
+- **武器映射**（`TowerVisualController.ResolveTowerType`）：roleType 30 加特林→**Minigun**（SciFi 转管机枪塔 `Minigun_1`，造型/语义贴切，原生 MinigunTracers 弹道）/ 31 电磁狙击炮→**Laser** / 32 火箭发射台→**Rocket**（旧 3 兜底 Minigun）。SciFi 塔层级统一为 `{Type}_1/{Type}_1_Root/Base_Mesh + Horizontal(偏航枢轴) + Vertical(俯仰枢轴)`，炮塔枢轴=`Horizontal`。
+- **阵营染色**：从共享 `Main.mat` 复制出 `Assets/ProjectAssets/SciFiStrategy_BuiltIn/Materials/Main_Red.mat` / `Main_Blue.mat`，`_Color` 用 **HSV 低饱和色**（红 HSV(0°,0.5,0.7)≈砖红 / 蓝 HSV(~212°,0.5,0.7)≈钢蓝，避免荧光感）；生成器把外壳渲染器换成对应材质（VFX 材质保留），重跑会刷新 `_Color`。
+- **视觉包装 Prefab（按武器等级）**：`Resources/Prefabs/Buildings/CubeTowers/Tower_{Type}_{Lv}_{Faction}.prefab`（Minigun/Laser/Rocket × 等级 1/2/3 × Red/Blue = **18 个**），生成器 `Assets/Editor/SciFiTowerPrefabBuilder.cs`（菜单 `Tools/WildernessReplay/Build SciFi Tower Visual Prefabs`）。**世界尺寸 1.4m 高 / 0.85m 底座占地**（围墙 0.825 之上）；炮塔 `Horizontal` 节点本地 scale 放大 **1.5x**（比例更自然；塔通常孤立摆放，外伸视觉可接受）；因 `UnitView.CalibrateBaseScale` 给塔施加常量缩放 0.7（量 Tower.prefab 自身宽度），生成器按「世界目标 ÷ 0.7」换算包装本地 scale；高度用整塔完整包围盒、占地只用 MeshRenderer（排除 Laser 光束 LineRenderer 会撑大 XZ）。
+- **武器等级 → 模型（2026-09-02）**：回放 `ReplayRole.level`（武器工事 1~5）已解析到 `state.level`。`UnitView.SetupTowerVisual` 按 `clamp(level,1,3)` 加载 `Tower_{Type}_{Lv}_{Faction}`（4~5 级用 _3 最高模型）；`RefreshTowerLevelVisual()` 在 `LateUpdate` 逐帧比对 `state.level`（照 WallOrientation 模式），**升级券/回合推进导致等级变化时自动销毁旧包装换对应等级模型**。Laser 高等级=多光束：`Laser_1` 单束 `LaserBeam`、`Laser_2` 双束 `LaserBeam_1/2`、`Laser_3` 三束 `LaserBeam_1/2/3`，运行时 `CollectLaserBeams` 按 `LaserBeam*` 前缀自动收集、开火时全部延伸对准落点。
+- **开火表现（全部用素材包原生特效，弃用旧程序化命中环/电击）**：Minigun=原生 `MinigunTracers` 枪口喷射 + `MinigunShell` 弹壳 + **到每个落点画粗弹道线**（`SpawnTracer` 加粗到 0.14，直观显示打到哪个机器人）+ **落点播原生 `Hit` 火花**（`SpawnGatlingHit`，`Hit.prefab` 已复制到 `Resources/FX/Hit` 供运行时加载）；Laser=攻击时显示原生 `LaserBeam` 光束 0.8s 并**逐帧延伸到攻击落点**（LineRenderer 终点 + End 节点用 `InverseTransformPoint` 对准目标，随炮塔转向始终指向落点；**待机默认隐藏**）；Rocket=发射原生导弹，**每枚朝落点坐标直线飞行**（发射瞬间 reparent 导弹到静态包装根、脱离旋转炮塔避免拐弯；**到达/中断归位时还原导弹原始 localScale**——否则炮塔 Horizontal 1.5x 会让导弹逐次放大成巨大导弹；全部到达或超时兜底后在落点触发爆炸 + 震屏 `FxFactory.PlayBombEffect`，暂停冻结；`ReplayPlayer` type32 不再即时爆炸、塔视觉未就绪兜底直接爆）。对应逻辑在 `TowerVisualController` 的 `ShowLaserBeam/UpdateLaserBeam/HideLaserBeam/LaunchRockets/ResetRocketMissiles/SpawnGatlingHit` + `LateUpdate`；`UnitView.Tower.cs` 已删 type31 旧电球协程（ElectricBallFly），新增 `IsTowerVisualReady`。
+- 旧的 CubeTowerDefense 包装 Prefab（Minigun/RPG/Flamethrower）保留在 CubeTowers/ 但不再被加载。
+
+### 防御塔（历史：Cube Tower Defense，已转 Built-in，2026-09-02 起被上方 SciFi 替换）
 - **源素材**（URP 专用，勿改）：`Assets/CubeTowerDefense/`
 - **已转换 prefab**（源塔）：`Assets/ProjectAssets/CubeTowerDefense_BuiltIn/Resources/Prefabs/Towers/`
   ```
@@ -114,7 +123,7 @@ Resources/Prefabs/
   Tower_RPG_Red/Blue.prefab
   ```
   材质在 `.../Materials/`（Standard）、粒子在 `.../Effects/`（Particles/Standard Unlit）。
-- **视觉包装 Prefab**（运行时真正加载、可编辑）：`Resources/Prefabs/Buildings/CubeTowers/Tower_{Type}_{Faction}.prefab`（6 个），嵌套引用上述源塔（不复制 FBX/贴图），根上挂 `TowerVisualController`。**运行时统一加载 `Tower_Minigun_{Faction}`**（红方 `Tower_Minigun_Red` / 蓝方 `Tower_Minigun_Blue`），Flamethrower/RPG 包装 Prefab 保留但不再加载。旧塔备份在 `Legacy/Tower_Legacy.prefab`。
+- **视觉包装 Prefab**：`Resources/Prefabs/Buildings/CubeTowers/Tower_{Type}_{Faction}.prefab`（6 个），嵌套引用上述源塔（不复制 FBX/贴图），根上挂 `TowerVisualController`。旧塔备份在 `Legacy/Tower_Legacy.prefab`。（注：2026-09-02 起运行时已改用上方 SciFi 塔，本目录 CubeTowerDefense 包装 Prefab 不再加载。）
 - **节点结构**：根 → `BasePillar`(静态底座) + `Minigun`(可旋转炮塔节点)；正前方 = 局部 +Z。Minigun 有 `Muzzle` 节点（内含 8 个 `Particle System` + `Shooting` 粒子），但该节点默认 **禁用**（见 [资源问题与解决方案.md](资源问题与解决方案.md) 第六节）。
 
 ### 环境
@@ -362,6 +371,11 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-09-02 | **武器工事换用 SciFiStrategyLowPoly 防御塔 + 导入报错修复**：① 修复 `SciFiStrategyLowPoly` 导入报错——`Main.mat` 引用 **Built-in 目标** Shader Graph，装免费包 `com.unity.shadergraph` 14.0.12 + 强制重导后全包 53 个模型不再粉紫（共享一材质，无需烘焙/remap）；17 个 `Animation/*.fbx` 关动画导入消除 0 帧报错；删除无引用损坏的 `CannonShell.prefab`（详见 [资源问题与解决方案.md](资源问题与解决方案.md) 第一节）。② 武器工事模型替换：roleType 30/31/32 由 CubeTowerDefense 三塔改为 **SciFi 塔（AntiAir/Laser/Rocket）**——`TowerVisualController.ResolveTowerType` 新映射 + `TURRET_NODES`→`Horizontal`（SciFi 塔偏航枢轴）；新增 `Assets/Editor/SciFiTowerPrefabBuilder.cs` 生成 6 个包装 Prefab（`CubeTowers/Tower_{Type}_{Faction}`，visualScale≈0.52 占地 0.67m 与旧塔一致，AntiAir 枪口=`MuzzleFlash`、Laser/Rocket 用 forward fallback）；开火表现：Laser 复用粗激光+落点电击分支、Rocket 无弹道（爆炸由 ReplayPlayer）、AntiAir 多 tracer。实测 Play 模式：6 座塔正常渲染（0 粉紫像素）、炮塔 180°→目标转向正常、Resources.Load 全通、编译 0 error |
+| 2026-09-02 | **SciFi 塔迭代（比例/低饱和色/特效延伸）**：① 炮塔 `Horizontal` 节点放大 **1.5x**、底座占地加宽到 0.85m（世界 1.4m 高不变，比例更自然）；② 阵营色改 **HSV 低饱和**（红 HSV(0,0.5,0.7)≈砖红 / 蓝 HSV(0.59,0.5,0.7)≈钢蓝，去荧光）；③ 激光攻击时**延伸到落点**（LineRenderer/End 逐帧 `InverseTransformPoint` 追踪，随炮塔转向始终指向目标）；④ 火箭导弹**飞到落点坐标再爆炸**（爆炸+震屏移到塔视觉 `LaunchRockets` 到达时触发 `FxFactory.PlayBombEffect`，`ReplayPlayer` type32 不再即时爆炸、塔视觉未就绪兜底；暂停冻结）。实测 Play：激光末端精确落点、火箭到达后 CFXR 爆炸、低饱和色无荧光、0 粉紫 |
+| 2026-09-02 | **拆分 TowerVisualController.cs（905→5 partial 文件，各 < 300 行）**：照 UnitView partial 模式按职责拆——`TowerVisualController.cs`(286: 类声明/序列化配置/共享运行态/Setup 调度/通用 helper) + `.Aim.cs`(215: Fire/开火/复位 + LateUpdate 每帧调度器) + `.Laser.cs`(105: 激光多光束) + `.Rocket.cs`(109: 火箭直飞/爆炸) + `.Fx.cs`(246: 弹道线/命中环/命中火花/OnDestroy 清理)。行为零改动；Play 实测三种塔开火/激光/火箭全部正常 |
+| 2026-09-02 | **武器等级 → 塔模型（_1/_2/_3）**：生成器改为按等级建 `Tower_{Type}_{Lv}_{Faction}`（3 类型×3 等级×2 阵营=18 个）；`ReplayRole.level`（武器工事 1~5）已解析到 `state.level`，`UnitView.SetupTowerVisual` 按 `clamp(level,1,3)` 加载对应等级模型（4~5 级用 _3），`RefreshTowerLevelVisual()` 在 `LateUpdate` 逐帧比对等级（照 WallOrientation）实现**升级实时换模型**；Laser 高等级=多光束（Laser_2 双束/Laser_3 三束），运行时按 `LaserBeam*` 前缀收集、开火全部延伸对准落点。实测 Play：等级 4 Minigun 显示 _3、Laser 等级 1→2 自动换 TowerVisual_Laser_2、Laser_2 开火 2 束 |
+| 2026-09-02 | **SciFi 塔修复（火箭巨大导弹 bug + 加特林弹道可见化）**：① 火箭导弹 **归位时还原原始 localScale**（`ResetRocketMissiles` 记录发射前 scale）——否则导弹挂在炮塔 Horizontal 1.5x 下，reparent 往返会**逐次放大 1.5 倍 → 数次开火后变成巨大导弹**；② 加特林(30→Minigun)开火**对每个落点画粗弹道线**（`SpawnTracer` 加粗 0.14→0.04、0.22s，直观显示打到哪个机器人）+ **落点播原生 Hit 火花**（`SpawnGatlingHit`，`Hit.prefab` 复制到 `Resources/FX/Hit`），保留原生 MinigunTracers 枪口喷射。实测 Play：导弹连发后 scale 稳定回 (1,1,1) 无巨大化、Minigun 双目标出 2 条宽弹道 + 2 个落点 Hit |
 | 2026-09-01 | **装甲车任务完成 → 破损车修复成完好车 → 开向小贩售卖 → 消失重生**：`MissionVehicleDriver`（挂 ReplayEntry，监控各队「自进化类2」任务完成跳变）+ `MissionPoint.StartSellCycle`（任务点初始/重生是**破损车** `broken_K151ArmoredVehicle.prefab`，完成时在原任务点换成完好车 `K151ArmoredVehicle.prefab` → 直线开向小贩、小贩前 `STOP_BEFORE_VENDOR=1.2m` 停下不调头 2s → 卡车上显示「贩卖成功」徽标 `TradeBadge.ShowText`（工人购买面板样式，1.5s 后脱离淡出）→ 消失 → 重生破损车，暂停冻结）；`ReplayTask` 增加 `taskX/taskY` 解析（任务 `pos` 字段指向对应卡车）。实测 Play 模式：初始破损车 → 触发即换完好车（isBroken 变 false）→ 完好车停小贩前 + 贩卖成功徽标 → 重生破损车；编译 0 error |
 | 2026-08-31 | **任务卡片按任务点区分显示（自进化类1 全流程 / 自进化类2 纯文字）**：`FX/TaskCardBadge.cs` 加**文字模式**（`_textMode = (_taskType == "自进化类2")`）——装甲车任务点（game 17,17/26,17）只显示 TradeBadge 风格状态文字（深色底+黄字）：接受任务→正在修理中→修理成功/失败，Success/Fail 2 回合淡出；宝箱任务点（自进化类1，game 14,14/23,14）走全流程卡片（claim 图/working 视频/unlock 图）。`TaskBadgeManager` 统计共享 working 播放时跳过文字模式卡（不显示视频，避免空转解码）。实测：自进化类2 Working='正在修理中'、Fail='修理失败'（黄字深底、MainTex=null）；自进化类1 Working=视频RT、Fail=unlock_fail 图；编译 0 error |
 | 2026-08-31 | **任务卡片改"仅 Working 视频、其余静态图（各 2 回合）"**：新增 `Assets/Resources/Sprites/claim.png`（Intro 领取，1024²）、`unlock_success.png`（Success 解锁成功，2048×1024）、`unlock_fail.png`（Fail 解锁失败，2048×1024）——图片**从 StreamingAssets 移到 Resources**（`Resources.Load` 同步加载、WebGL 安全，避免异步加载中间态）；`FX/TaskCardBadge.cs`：Intro/Success/Fail 改 `LoadTex` 图片、`_shownUrl=null`，结果图 2 回合后淡出（`_resultStartCur` + `RESULT_ROUNDS=2`，round-based 速度无关）；删除 `BeginClaimVideo`/`BeginResultVideo` 及结果视频相关（`_resultDuration`/`_resultPreloadStarted`/SUCCESS/FAIL_VIDEO）。`FX/TaskBadgeManager.cs`：只建 working 一个共享播放器；共享 working 仅在"有卡在 Intro（预卷）或 Working"时播放、空闲暂停省解码。实测：Working=RenderTexture（视频）、Intro=claim、Success=unlock_success、Fail=unlock_fail；编译 0 error |

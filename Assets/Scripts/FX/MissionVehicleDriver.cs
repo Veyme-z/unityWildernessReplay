@@ -14,6 +14,7 @@ public class MissionVehicleDriver : MonoBehaviour
 
     ReplayPlayer _player;
     int _mapW = 41, _mapH = 32;
+    int _lastCur = -1;   // 上一帧 cur：检测 Seek（暂停 && cur 变化）
 
     void Update()
     {
@@ -27,6 +28,14 @@ public class MissionVehicleDriver : MonoBehaviour
                 _mapH = _player.data.start.map.height;
             }
         }
+
+        // Seek 检测（对齐 TaskBadgeManager）：暂停 && cur 变化 = 拖动进度条/跳回合。
+        // 必须重置所有卡车为原任务点破损状态——否则回到「任务未完成」的回合时，
+        // 进行中的售卖协程（开向小贩/贩卖成功徽标）会继续跑完，违背该回合卡车应破损的设定。
+        if (_lastCur >= 0 && !_player.playing && _player.cur != _lastCur)
+            ResetAllTrucks();
+        _lastCur = _player.cur;
+
         if (_player.data == null) return;
         if (_player.cur < 1 || _player.cur > _player.data.rounds.Count) return;
         var round = _player.data.rounds[_player.cur - 1];
@@ -71,6 +80,13 @@ public class MissionVehicleDriver : MonoBehaviour
         foreach (var mp in FindObjectsOfType<MissionPoint>())
             if (mp.isVehicle && mp.gameX == gx && mp.gameY == gy) return mp;
         return null;
+    }
+
+    /// <summary>Seek 后把全部任务点卡车重置为原任务点的破损卡车（取消售卖协程/销毁徽标）。</summary>
+    static void ResetAllTrucks()
+    {
+        foreach (var mp in FindObjectsOfType<MissionPoint>())
+            if (mp.isVehicle) mp.ResetToBroken();
     }
 
     Vector3 CellToWorld(int gx, int gy)

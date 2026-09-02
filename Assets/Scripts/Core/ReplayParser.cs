@@ -112,6 +112,14 @@ public static class ReplayParser
                     roleName = MiniJson.Str(d, "roleName") ?? ""
                 });
             }
+        // news 对象格式：{"officialNews": "官方消息(推理类)", "folkLegends": "民间传闻(长上下文)"}
+        var newsObj = MiniJson.Obj(o, "news");
+        if (newsObj != null)
+        {
+            r.officialNews = MiniJson.Str(newsObj, "officialNews") ?? "";
+            r.folkLegends = MiniJson.Str(newsObj, "folkLegends") ?? "";
+        }
+        // 兼容旧数组格式：news: [ {type,text} | "文本" ]
         var news = MiniJson.Arr(o, "news");
         if (news != null)
             foreach (var n in news)

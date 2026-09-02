@@ -22,12 +22,12 @@ public static class TaskPanelPrefabBuilder
     [MenuItem("Tools/WildernessReplay/Build Task Panel Prefabs")]
     public static void Build()
     {
-        // 右上角堆叠（PriceChart 在 (-10,-256) 300×240，两个面板在其上方，避免重叠）：
-        //   推理类 (-10,-10) 300×120 → 底边 -130；长上下文 (-10,-140) 300×106 → 底边 -246；距折线图 -256 留 10px
+        // 右上角堆叠（PriceChart 在 (-10,-490) 340×240，两个面板在其上方，避免重叠）：
+        //   推理类 (-10,-10) 300×190（官方消息最长 190 字 → body ~150px）；长上下文 (-10,-210) 300×270（民间传闻最长 293 字 → body ~230px）
         var reasoning = BuildPanel("TaskPanelReasoning", TaskPanelKind.Reasoning, "【推理类任务】",
-            215, new Vector2(-10, -10), new Vector2(300, 120), "暂无官方消息", REASONING_PATH);
+            215, new Vector2(-10, -10), new Vector2(300, 190), "暂无官方消息", REASONING_PATH);
         var longctx = BuildPanel("TaskPanelLongContext", TaskPanelKind.LongContext, "【长上下文任务】",
-            216, new Vector2(-10, -140), new Vector2(300, 106), "暂无民间传闻", LONGCTX_PATH);
+            216, new Vector2(-10, -210), new Vector2(300, 270), "暂无民间传闻", LONGCTX_PATH);
         if (reasoning == null || longctx == null) return;
 
         WireScene(reasoning, longctx);

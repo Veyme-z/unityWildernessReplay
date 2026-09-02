@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// 底部播放控制面板：双队数据栏 + 时间轴 + 播放/镜头/导播按钮。独立 Canvas（sortingOrder 220）。
+/// 底部播放控制面板：双队数据栏 + 时间轴 + 播放/镜头按钮。独立 Canvas（sortingOrder 220）。
 ///
 /// ═══ 架构：Prefab 是真源，代码只做运行时接线（后续改面板先看这） ═══
 /// 1. 结构/布局/静态颜色/字号/标签文案 全在 Assets/Prefabs/UI/PlaybackControlPanel.prefab。
@@ -10,17 +10,19 @@ using UnityEngine.UI;
 ///    直接 LogError 并返回 null（旧的 CreateFromCode 纯代码兜底已删除）。
 /// 2. Create(player) 实例化 prefab 后依次执行（顺序有依赖）：
 ///      UiFonts.Apply     —— 统一替换所有 Text 字体为 NotoSansSC（覆盖 prefab 烘焙字体）
-///      AddDirectorUI()   —— 动态追加「手动/自动」按钮 + DirectorStatus 指示灯（prefab 里没有）
-///      WireCallbacks()   —— 按名字查找接线：Slider/Play/Restart/Sp1/Sp2/CamGlobal/CamA/CamB/CamFree/手动/自动
+///      WireCallbacks()   —— 按名字查找接线：Slider/Play/Restart/Sp1/Sp2/CamGlobal/CamA/CamB/CamFree
 ///      ResolveTextRefs() —— 按名字重解析队伍文本（TeamBar/RedCard|BlueCard/*），防序列化引用失效
 ///      Sync(player)      —— 立即填充一次数据
 /// 3. Update() 每帧调 Sync()（轮询式直读 engine 现场，非事件驱动）；拖时间轴会先 SetPlaying(false) 再 JumpTo。
-/// 4. 代码运行时覆盖点：全部文本内容、Play/Speed/Manual/Auto 按钮底色、字体。
+/// 4. 代码运行时覆盖点：全部文本内容、Play/Speed 按钮底色、当前镜头模式按钮底色、字体。
 ///    其余（布局、字号、静态颜色、按钮标签）来自 prefab，改样式直接改 prefab。
-/// 5. 当前状态（2026-08）：镜头按钮 = 全局/CamGlobal · 蓝方/CamA · 红方/CamB · 自由/CamFree，
-///    与键盘 1/2/3/4 对应（见 ReplayCameraRig）。ControlBar 680 宽 + HorizontalLayoutGroup 自动排布；
-///    TeamBar 用 HorizontalLayoutGroup 排 RedCard/BlueCard 两张队伍卡。已按需求移除全部 emoji。
-/// </summary>
+/// 5. 当前状态（2026-09）：镜头按钮 = 全局/CamGlobal · 蓝方/CamA · 红方/CamB · 自由/CamFree，
+///    与键盘 1/2/3/4 对应（见 ReplayCameraRig）；开局默认「自由」模式（ReplayCameraRig.Start→"free"），
+///    Update 里按 CurrentModeName 高亮当前镜头按钮。已取消「手动/自动」智能导播按钮与 DirectorStatus 指示灯。
+///    ControlBar 680 宽 + HorizontalLayoutGroup 自动排布；TeamBar 用 HorizontalLayoutGroup 排 RedCard/BlueCard。
+/// 6. 倍速按钮（2026-09）：Sp1 点击在 1×↔0.5×、Sp2 点击在 2×↔5× 间循环切换，按钮文字随档位更新，
+///    初始默认 1×（ReplayPlayer.SPEEDS={0.5,1,2,5}，speedIndex 默认 1）；高亮 = 当前激活的速度组。
+///</summary>
 public class PlaybackControlPanelController : MonoBehaviour
 {
     [SerializeField] Text _redName, _redHp, _redGold, _redScore, _redTower, _redWall, _redMember, _redTask, _redBag;
@@ -29,9 +31,11 @@ public class PlaybackControlPanelController : MonoBehaviour
     [SerializeField] Text _roundText;
     [SerializeField] Button _playBtn; [SerializeField] Text _playLabel;
     [SerializeField] Button _speed1Btn, _speed2Btn;
-    // 智能导演模式
-    [SerializeField] Button _btnManual, _btnAuto;
-    [SerializeField] Text _directorStatus;
+    // 倍速按钮档位：Sp1 在 1x↔0.5x、Sp2 在 2x↔5x 间循环（false=基础档 1x/2x，true=切换档 0.5x/5x）
+    bool _sp1Half;
+    bool _sp2Five;
+    // 镜头模式按钮（高亮当前激活项；开局默认「自由」）
+    [SerializeField] Button _camGlobalBtn, _camABtn, _camBBtn, _camFreeBtn;
     int _totalRounds;
     ReplayPlayer _player;
 
@@ -59,65 +63,11 @@ public class PlaybackControlPanelController : MonoBehaviour
         var ctrl = go.GetComponentInChildren<PlaybackControlPanelController>();
         if (ctrl == null) ctrl = go.AddComponent<PlaybackControlPanelController>();
         ctrl._player = player;
-        ctrl.AddDirectorUI(go.transform);  // 先创建导演模式 UI
         ctrl.WireCallbacks(player);        // 再连线回调
         ctrl.ResolveTextRefs();           // 按名字解析文本引用（避免序列化引用失效）
         ctrl._totalRounds = player.TotalRounds;
         ctrl.Sync(player);
         return ctrl;
-    }
-
-    /// <summary>动态创建导演模式按钮 + 状态指示灯（「手动/自动」按钮由代码动态创建，prefab 里没有）</summary>
-    void AddDirectorUI(Transform canvasRoot)
-    {
-        var f = Fn();
-        // 在 ControlBar 中添加 Manual/Auto 按钮
-        var btnBar = transform.Find("ControlBar");
-        if (btnBar == null) return;
-
-        // 找到最右侧按钮的位置
-        float bx = 200f; // 右侧偏移
-        var manBtn = MakeBtn(btnBar, "Btn_ModeManual", "手动", bx, 48, 24,
-            new Color(0.3f, 0.55f, 0.3f), f, 12,
-            () => CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Manual));
-        var autoBtn = MakeBtn(btnBar, "Btn_ModeAuto", "自动", bx + 54, 48, 24,
-            new Color(0.55f, 0.25f, 0.2f), f, 12,
-            () => CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Auto));
-        _btnManual = manBtn;
-        _btnAuto = autoBtn;
-
-        // 状态指示灯
-        var statusGo = new GameObject("DirectorStatus");
-        statusGo.transform.SetParent(canvasRoot, false);
-        var srt = statusGo.AddComponent<RectTransform>();
-        srt.anchorMin = new Vector2(0.5f, 1); srt.anchorMax = new Vector2(0.5f, 1);
-        srt.pivot = new Vector2(0.5f, 1); srt.anchoredPosition = new Vector2(0, -72);
-        srt.sizeDelta = new Vector2(320, 28);
-        var st = statusGo.AddComponent<Text>();
-        st.text = "智能导演进行中"; st.font = f; st.fontSize = 16;
-        st.alignment = TextAnchor.MiddleCenter; st.color = new Color(1f, 0.25f, 0.2f);
-        st.raycastTarget = false;
-        statusGo.SetActive(false);
-        _directorStatus = st;
-    }
-
-    Button MakeBtn(Transform p, string n, string l, float x, float w, float h, Color c, Font f, int fsz, UnityEngine.Events.UnityAction cb)
-    {
-        var g = new GameObject(n); g.transform.SetParent(p, false);
-        var r = g.AddComponent<RectTransform>();
-        r.anchorMin = new Vector2(0.5f, 0.5f); r.anchorMax = new Vector2(0.5f, 0.5f);
-        r.pivot = new Vector2(0.5f, 0.5f); r.anchoredPosition = new Vector2(x, 0);
-        r.sizeDelta = new Vector2(w, h);
-        g.AddComponent<Image>().color = c;
-        var b = g.AddComponent<Button>(); b.onClick.AddListener(cb);
-        var lg = new GameObject("L"); lg.transform.SetParent(g.transform, false);
-        var lr = lg.AddComponent<RectTransform>();
-        lr.anchorMin = Vector2.zero; lr.anchorMax = Vector2.one;
-        lr.offsetMin = Vector2.zero; lr.offsetMax = Vector2.zero;
-        var lt = lg.AddComponent<Text>();
-        lt.text = l; lt.font = f; lt.fontSize = fsz;
-        lt.alignment = TextAnchor.MiddleCenter; lt.color = Color.white; lt.raycastTarget = false;
-        return b;
     }
 
     /// <summary>Prefab 模式：连接按钮/滑块回调（无法在 prefab 中序列化 UnityAction）</summary>
@@ -133,20 +83,30 @@ public class PlaybackControlPanelController : MonoBehaviour
             if (restartBtn != null) restartBtn.onClick.AddListener(() => { player.Restart(); _totalRounds = player.TotalRounds; });
 
             var sp1Btn = btnBar.Find("Sp1")?.GetComponent<Button>();
-            if (sp1Btn != null) { sp1Btn.onClick.AddListener(() => player.SetSpeed(2)); _speed1Btn = sp1Btn; }
+            if (sp1Btn != null)
+            {
+                // 1x ↔ 0.5x 循环（SPEEDS[1]=1x / SPEEDS[0]=0.5x）
+                sp1Btn.onClick.AddListener(() => { _sp1Half = !_sp1Half; player.SetSpeed(_sp1Half ? 0 : 1); });
+                _speed1Btn = sp1Btn;
+            }
 
             var sp2Btn = btnBar.Find("Sp2")?.GetComponent<Button>();
-            if (sp2Btn != null) { sp2Btn.onClick.AddListener(() => player.SetSpeed(3)); _speed2Btn = sp2Btn; }
+            if (sp2Btn != null)
+            {
+                // 2x ↔ 5x 循环（SPEEDS[2]=2x / SPEEDS[3]=5x）
+                sp2Btn.onClick.AddListener(() => { _sp2Five = !_sp2Five; player.SetSpeed(_sp2Five ? 3 : 2); });
+                _speed2Btn = sp2Btn;
+            }
 
             var camRig = Camera.main != null ? Camera.main.GetComponent<ReplayCameraRig>() : null;
             var camGlobalBtn = btnBar.Find("CamGlobal")?.GetComponent<Button>();
-            if (camGlobalBtn != null) camGlobalBtn.onClick.AddListener(() => camRig?.SetCameraMode("global"));
+            if (camGlobalBtn != null) { camGlobalBtn.onClick.AddListener(() => camRig?.SetCameraMode("global")); _camGlobalBtn = camGlobalBtn; }
             var camABtn = btnBar.Find("CamA")?.GetComponent<Button>();
-            if (camABtn != null) camABtn.onClick.AddListener(() => camRig?.SetCameraMode("teamA"));
+            if (camABtn != null) { camABtn.onClick.AddListener(() => camRig?.SetCameraMode("teamA")); _camABtn = camABtn; }
             var camBBtn = btnBar.Find("CamB")?.GetComponent<Button>();
-            if (camBBtn != null) camBBtn.onClick.AddListener(() => camRig?.SetCameraMode("teamB"));
+            if (camBBtn != null) { camBBtn.onClick.AddListener(() => camRig?.SetCameraMode("teamB")); _camBBtn = camBBtn; }
             var camFreeBtn = btnBar.Find("CamFree")?.GetComponent<Button>();
-            if (camFreeBtn != null) camFreeBtn.onClick.AddListener(() => camRig?.SetCameraMode("free"));
+            if (camFreeBtn != null) { camFreeBtn.onClick.AddListener(() => camRig?.SetCameraMode("free")); _camFreeBtn = camFreeBtn; }
 
             // 「显示」调试切换按钮（点击取反全局开关，Update 里高亮）
             var showStatsBtn = btnBar.Find("Btn_ShowStats")?.GetComponent<Button>();
@@ -181,18 +141,8 @@ public class PlaybackControlPanelController : MonoBehaviour
                     barRT.sizeDelta = new Vector2(740f, barRT.sizeDelta.y);
             }
 
-            // 智能导播模式按钮
-            var manBtn = btnBar.Find("Btn_ModeManual")?.GetComponent<Button>();
-            if (manBtn != null) { manBtn.onClick.AddListener(() => CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Manual)); _btnManual = manBtn; }
-            var autoBtn = btnBar.Find("Btn_ModeAuto")?.GetComponent<Button>();
-            if (autoBtn != null) { autoBtn.onClick.AddListener(() => CameraManager.Instance?.SetSpectatorMode(CameraManager.CameraSpectatorMode.Auto)); _btnAuto = autoBtn; }
         }
-        // 导演状态指示灯
-        var statusGo = transform.Find("DirectorStatus");
-        if (statusGo != null) { _directorStatus = statusGo.GetComponent<Text>(); statusGo.gameObject.SetActive(false); }
     }
-
-
 
     /// <summary>按名字解析文本引用（prefab 实例化后重解析，避免序列化引用失效）</summary>
     void ResolveTextRefs()
@@ -224,6 +174,14 @@ public class PlaybackControlPanelController : MonoBehaviour
         if (_volumeBtn == null) return;
         var t = _volumeBtn.transform.Find("L")?.GetComponent<Text>();
         if (t != null) t.text = BgmController.CurrentVolumeLabel();
+    }
+
+    /// <summary>设置倍速按钮标签（"0.5×"/"1×"/"2×"/"5×"），文字挂在按钮的 L 子节点。</summary>
+    static void SetSpeedLabel(Button b, string label)
+    {
+        if (b == null) return;
+        var t = b.transform.Find("L")?.GetComponent<Text>();
+        if (t != null) t.text = label;
     }
 
     void OnDrag(float v) {
@@ -295,34 +253,23 @@ public class PlaybackControlPanelController : MonoBehaviour
             if(bagT!=null) bagT.text="背包 "+bagStr;
         }
         if(_playLabel!=null){ _playLabel.text=p.playing?"暂停":"播放"; _playBtn.GetComponent<Image>().color=p.playing?new Color(0.96f,0.78f,0.22f):new Color(0,0.478f,1f); }
-        if(_speed1Btn!=null)_speed1Btn.GetComponent<Image>().color=p.speedIndex==2?new Color(0,0.478f,1f):new Color(0.35f,0.35f,0.40f);
-        if(_speed2Btn!=null)_speed2Btn.GetComponent<Image>().color=p.speedIndex==3?new Color(0,0.478f,1f):new Color(0.35f,0.35f,0.40f);
+        // 倍速按钮：Sp1 组=0.5x/1x，Sp2 组=2x/5x；高亮当前激活的速度组，按钮文字随档位更新
+        if(_speed1Btn!=null)
+        {
+            _speed1Btn.GetComponent<Image>().color=(p.speedIndex==0||p.speedIndex==1)?new Color(0,0.478f,1f):new Color(0.35f,0.35f,0.40f);
+            SetSpeedLabel(_speed1Btn, p.speedIndex==0?"0.5×":"1×");
+        }
+        if(_speed2Btn!=null)
+        {
+            _speed2Btn.GetComponent<Image>().color=(p.speedIndex==2||p.speedIndex==3)?new Color(0,0.478f,1f):new Color(0.35f,0.35f,0.40f);
+            SetSpeedLabel(_speed2Btn, p.speedIndex==3?"5×":"2×");
+        }
     }
     void Update() {
         if(_player!=null) Sync(_player);
 
-        // 导演模式指示灯：Auto 模式时红色呼吸闪烁，Manual 时隐藏
-        if (_directorStatus != null)
-        {
-            var mgr = CameraManager.Instance;
-            bool isAuto = mgr != null && mgr.IsAuto;
-            _directorStatus.gameObject.SetActive(isAuto);
-            if (isAuto)
-            {
-                // 呼吸灯：alpha 在 0.4~1.0 之间正弦波动
-                float alpha = 0.4f + 0.6f * (Mathf.Sin(Time.time * 3f) * 0.5f + 0.5f);
-                var c = _directorStatus.color;
-                _directorStatus.color = new Color(1f, 0.2f, 0.15f, alpha);
-            }
-        }
-
-        // Auto 模式按钮高亮
-        if (_btnManual != null && _btnAuto != null && CameraManager.Instance != null)
-        {
-            bool auto = CameraManager.Instance.IsAuto;
-            _btnManual.GetComponent<Image>().color = auto ? new Color(0.35f, 0.35f, 0.40f) : new Color(0.3f, 0.55f, 0.3f);
-            _btnAuto.GetComponent<Image>().color = auto ? new Color(0.75f, 0.3f, 0.2f) : new Color(0.35f, 0.35f, 0.40f);
-        }
+        // 当前镜头模式按钮高亮（读取 ReplayCameraRig 实际模式；开局默认「自由」）
+        UpdateCameraModeHighlight();
 
         // 「显示」调试开关高亮（开启=琥珀色，关闭=默认暗底）
         if (_showStatsBtn != null)
@@ -330,6 +277,26 @@ public class PlaybackControlPanelController : MonoBehaviour
 
         // 音量按钮文字每帧同步为当前档位
         if (_volumeBtn != null) RefreshVolumeLabel();
+    }
+
+    /// <summary>高亮当前激活的镜头模式按钮：选中=蓝（与倍速按钮一致），其余恢复暗底。</summary>
+    void UpdateCameraModeHighlight()
+    {
+        var rig = Camera.main != null ? Camera.main.GetComponent<ReplayCameraRig>() : null;
+        string mode = rig != null ? rig.CurrentModeName : "global";
+        Color active = new Color(0f, 0.478f, 1f);
+        Color idle = new Color(0.22f, 0.22f, 0.28f);
+        SetCamHighlight(_camGlobalBtn, mode == "global", active, idle);
+        SetCamHighlight(_camABtn,     mode == "teamA",  active, idle);
+        SetCamHighlight(_camBBtn,     mode == "teamB",  active, idle);
+        SetCamHighlight(_camFreeBtn,  mode == "free",   active, idle);
+    }
+
+    static void SetCamHighlight(Button b, bool on, Color active, Color idle)
+    {
+        if (b == null) return;
+        var img = b.GetComponent<Image>();
+        if (img != null) img.color = on ? active : idle;
     }
 
 }

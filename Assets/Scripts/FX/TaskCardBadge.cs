@@ -677,6 +677,8 @@ public class TaskCardBadge : MonoBehaviour
         {
             // 文字模式：底色用 _stateColor.a（0.5 半透明）并随淡出缩放；其余状态用淡出 alpha
             float bgA = _textMode ? _stateColor.a * a : a;
+            // 防御：Awake 未跑（_mpb 为 null）时兜底初始化，避免刷 NullReferenceException
+            if (_mpb == null) _mpb = new MaterialPropertyBlock();
             _mpb.SetColor("_Color", new Color(_stateColor.r, _stateColor.g, _stateColor.b, bgA));
             _bgRend.SetPropertyBlock(_mpb);
         }
