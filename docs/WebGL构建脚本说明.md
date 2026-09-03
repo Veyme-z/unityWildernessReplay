@@ -46,18 +46,20 @@
 
 | 想改什么 | 在 `PatchIndexHtml` 里改哪里 |
 |---|---|
-| 浏览器标签标题 | `Regex.Replace(html, "<title>...", "<title>荒野回放 · Wilderness Replay</title>", ...)` 那行 |
-| 背景色 / 加载卡片 / 进度条配色 | 注入的 `<style>...</style>` 块（CSS 字符串），如 `#unity-loading-bar`、`#unity-progress-bar-full`、`background: #0b1020` 等 |
-| 加载中的标题 / 副标题文字 | `<div class="wilderness-loading-title">荒野回放</div>` 和 `wilderness-loading-sub` 那两行 |
-| 加载百分比文字 / 进度动效 | `wilderness-progress-text`（JS 实时更新百分比）与 `#unity-progress-bar-full` 的条纹动画（`@keyframes wildernessStripes`） |
+| 浏览器标签标题 | `Regex.Replace(html, "<title>...", ...)` 那行 |
+| 加载遮罩配色 / 全屏背景 | CSS 里 `#wr-splash` 的 `background` 渐变、`.wr-card` 卡片背景/边框色 |
+| 加载卡片大标题（"荒野回放"） | 注入的 DOM：`<div class="wr-title">荒野回放</div>` |
+| 阶段提示文字（加载中/启动引擎/构建场景） | `.wr-status` 元素（JS `__wrStatus` 更新）+ C# 侧 `ReplayEntry.cs` 的 `NotifyWebGLStatus(...)` 文案 |
+| 进度条配色 / 条纹动效 | CSS `.wr-track` / `.wr-fill` 与 `@keyframes wrStripes` |
+| 加载失败的红色提示 | JS `__wrLoadError` / C# `NotifyWebGLError(...)` 文案 |
 | 画布是否铺满窗口 | `canvas.style.width = "100vw"` / `canvas.style.height = "100vh"` 两行 |
 | 资源缓存版本戳 | 结尾 `buildStamp` 相关的 `.Replace(...)` 段（构建时间戳，不用动） |
 
 **注意事项**：
-- 所有替换都是"匹配到才替换，匹配不到自动跳过"，**不会改坏文件**。
-- 进度条的真实百分比由 Unity 的 `progress` 回调驱动，它**只在下载 `.data` 时**报告 0→100%，框架/wasm 编译阶段没有回调；脚本已加条纹动画保证这些阶段进度条依然可见。
-- 想加"全屏品牌封面 + 加载完淡出"这类更复杂的启动页，在 `PatchIndexHtml` 里参照 Lychee 的 `#lychee-splash` 写法追加即可。
-- 改完一定**重新构建**，改旧构建包里的 `index.html` 会被下次构建清掉。
+- 加载遮罩是**全屏不透明**的（`#wr-splash`），会一直盖住画面，直到 C# 侧 `ReplayEntry` 把地图/角色/UI 都建好、调用 `NotifyWebGLReady()`（对应 JS `__wrGameReady`）才淡出——**所以不会闪 Unity 启动图标、也不会露出空场景**。淡出前所有加载阶段都被遮住。
+- 进度条百分比由 Unity `progress` 回调驱动，它**只在下载 `.data` 时**报告 0→100%；之后引擎初始化/启动画面/建场景都没有回调，靠条纹动画 + 阶段文字撑住。
+- 模板自带的 `#unity-loading-bar` 已被 `display:none` 隐藏（我们不再用它），别去改它。
+- 所有替换都是"匹配到才替换，匹配不到自动跳过"，**不会改坏文件**；改完一定**重新构建**，改旧构建包里的 `index.html` 会被下次构建清掉。
 
 ## 五、常见问题
 

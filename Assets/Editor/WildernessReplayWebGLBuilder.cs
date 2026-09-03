@@ -144,42 +144,64 @@ public static class WildernessReplayWebGLBuilder
         html = Regex.Replace(html, "<title>.*?</title>",
             "<title>荒野回放 · Wilderness Replay</title>", RegexOptions.Singleline);
 
-        // --- 全窗画布 + 深色背景 + 隐藏 footer/logo + 居中加载卡片（注入 CSS） ---
+        // --- 全屏加载遮罩：盖住 Unity 引擎初始化 + 启动画面 + 空场景，直到 C# 侧
+        // ReplayEntry 把地图/角色建好调用 __wrGameReady 才淡出（避免闪 Unity 图标和空场景）。 ---
         html = html.Replace("</head>",
             "    <style>\n" +
             "      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0b1020; }\n" +
             "      #unity-container.unity-desktop { width: 100vw; height: 100vh; background: #0b1020; }\n" +
             "      #unity-canvas { background: #000; }\n" +
             "      #unity-footer { display: none; }\n" +
-            "      #unity-warning { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); max-width: min(720px, calc(100vw - 32px)); z-index: 20; color: #ffd9a0; background: rgba(40,20,10,0.94); border: 1px solid #b8862f; border-radius: 6px; padding: 10px 16px; font: 500 13px/1.6 'Microsoft YaHei', sans-serif; }\n" +
-            "      #unity-loading-bar { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(500px, calc(100vw - 48px)); padding: 28px 34px; background: rgba(16,22,40,0.96); border: 1px solid #2c3a5c; border-radius: 10px; box-shadow: 0 26px 80px rgba(0,0,0,0.6); text-align: center; }\n" +
             "      #unity-logo { display: none; }\n" +
-            "      .wilderness-loading-title { color: #e8edf7; font: 700 24px/1.3 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }\n" +
-            "      .wilderness-loading-sub { margin-top: 8px; color: #8fa3c8; font: 500 13px/1.6 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }\n" +
-            "      #unity-progress-bar-empty { width: 100%; height: 8px; margin-top: 22px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; overflow: hidden; }\n" +
-            "      #unity-progress-bar-full { height: 100%; min-width: 4px; background: linear-gradient(90deg, #1e6fd9, #38c8ff); border-radius: 999px; background-image: linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%); background-size: 26px 26px; animation: wildernessStripes 0.9s linear infinite; transition: width 0.3s ease; }\n" +
-            "      @keyframes wildernessStripes { 0% { background-position: 0 0; } 100% { background-position: 26px 0; } }\n" +
+            "      #unity-loading-bar { display: none !important; }\n" + // 模板自带加载条不用了，改用全屏 wr-splash
+            "      #unity-warning { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); max-width: min(720px, calc(100vw - 32px)); z-index: 20; color: #ffd9a0; background: rgba(40,20,10,0.94); border: 1px solid #b8862f; border-radius: 6px; padding: 10px 16px; font: 500 13px/1.6 'Microsoft YaHei', sans-serif; }\n" +
+            "      #wr-splash { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 34%, #182240 0%, #0b1020 68%, #05070d 100%); transition: opacity 0.5s ease; }\n" +
+            "      #wr-splash.wr-hidden { opacity: 0; pointer-events: none; }\n" +
+            "      .wr-card { width: min(520px, calc(100vw - 48px)); padding: 30px 38px; background: rgba(13,19,34,0.92); border: 1px solid #2c3a5c; border-radius: 12px; box-shadow: 0 26px 80px rgba(0,0,0,0.6); text-align: center; }\n" +
+            "      .wr-title { color: #e8edf7; font: 700 28px/1.3 'Microsoft YaHei','Noto Sans CJK SC',sans-serif; }\n" +
+            "      .wr-status { margin-top: 10px; color: #9fb1d4; font: 500 14px/1.6 'Microsoft YaHei','Noto Sans CJK SC',sans-serif; min-height: 22px; }\n" +
+            "      .wr-track { width: 100%; height: 8px; margin-top: 24px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; overflow: hidden; }\n" +
+            "      .wr-fill { height: 100%; min-width: 4px; width: 0%; background: linear-gradient(90deg, #1e6fd9, #38c8ff); border-radius: 999px; background-image: linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%); background-size: 26px 26px; animation: wrStripes 0.9s linear infinite; transition: width 0.25s ease; }\n" +
+            "      @keyframes wrStripes { 0% { background-position: 0 0; } 100% { background-position: 26px 0; } }\n" +
             "    </style>\n" +
             "  </head>");
 
-        // --- 加载卡片标题（插到 unity-logo 之后） ---
-        html = html.Replace("<div id=\"unity-logo\"></div>",
-            "<div id=\"unity-logo\"></div>" +
-            "<div class=\"wilderness-loading-title\">荒野回放</div>" +
-            "<div class=\"wilderness-loading-sub\" id=\"wilderness-progress-text\">正在加载回放资源… 0%</div>");
+        // --- 注入全屏遮罩 DOM（盖在 unity-container / canvas 之上） ---
+        html = html.Replace("<div id=\"unity-container\"",
+            "<div id=\"wr-splash\">" +
+            "<div class=\"wr-card\">" +
+            "<div class=\"wr-title\">荒野回放</div>" +
+            "<div class=\"wr-status\" id=\"wr-status\">正在加载回放资源… 0%</div>" +
+            "<div class=\"wr-track\"><div class=\"wr-fill\" id=\"wr-fill\"></div></div>" +
+            "</div></div>\n    <div id=\"unity-container\"");
 
         // --- 画布铺满窗口 ---
         html = html.Replace("canvas.style.width = \"960px\";", "canvas.style.width = \"100vw\";");
         html = html.Replace("canvas.style.height = \"600px\";", "canvas.style.height = \"100vh\";");
 
-        // --- 加载进度：真实百分比 + 进度文字（Unity 的 progress 回调驱动） ---
-        // Unity 的 progress 回调只在下载 .data 时报告 0→100%；框架/wasm 阶段无回调，
-        // 所以保留已显示的百分比 + 条纹动画，保证任何阶段进度条都可见。
+        // --- 加载进度：驱动 wr-fill 宽度 + wr-status 文字（Unity 的 progress 回调） ---
+        // Unity 的 progress 回调只在下载 .data 时报告 0→100%；之后引擎初始化/启动画面/建场景
+        // 都没有回调，所以保留已显示的百分比 + 条纹动画 + C# 阶段文字，保证任何阶段都可见。
         html = html.Replace(
             "progressBarFull.style.width = 100 * progress + \"%\";",
-            "progressBarFull.style.width = Math.max(2, Math.round(progress * 100)) + \"%\";\n" +
-            "        var _wt = document.getElementById('wilderness-progress-text');\n" +
-            "        if (_wt) _wt.textContent = progress >= 1 ? '正在启动引擎…' : '正在加载回放资源… ' + Math.round(progress * 100) + '%';");
+            "var _wrFill = document.getElementById('wr-fill');\n" +
+            "        if (_wrFill) _wrFill.style.width = Math.max(2, Math.round(progress * 100)) + '%';\n" +
+            "        var _wrSt = document.getElementById('wr-status');\n" +
+            "        if (_wrSt) _wrSt.textContent = progress >= 1 ? '正在启动引擎…' : '正在加载回放资源… ' + Math.round(progress * 100) + '%';");
+
+        // --- 遮罩控制函数 + 兜底超时（在 createUnityInstance 前注入） ---
+        // C# 侧通过 Application.ExternalCall 调 __wrGameReady / __wrStatus / __wrLoadError。
+        html = html.Replace("createUnityInstance(canvas, config, (progress) => {",
+            "window.__wrHideSplash = function () { var s = document.getElementById('wr-splash'); if (!s) return; s.classList.add('wr-hidden'); setTimeout(function () { if (s && s.parentNode) s.parentNode.removeChild(s); }, 600); };\n" +
+            "        window.__wrGameReady = function () { window.__wrHideSplash(); };\n" +
+            "        window.__wrStatus = function (t) { var e = document.getElementById('wr-status'); if (e) e.textContent = t; };\n" +
+            "        window.__wrLoadError = function (msg) { var e = document.getElementById('wr-status'); if (e) { e.textContent = '加载失败：' + msg; e.style.color = '#ff9d8a'; } console.error(msg); };\n" +
+            "        setTimeout(function () { window.__wrHideSplash(); }, 90000);\n" +
+            "        createUnityInstance(canvas, config, (progress) => {");
+
+        // --- 引擎加载失败时把错误显示到遮罩上（而非原生 alert 弹窗） ---
+        html = html.Replace("alert(message);",
+            "window.__wrLoadError ? window.__wrLoadError(message) : alert(message);");
 
         // --- 资源 URL 加版本戳（防浏览器缓存旧包；模板片段匹配不上则整体跳过，避免 buildStamp 未定义） ---
         if (html.Contains("var loaderUrl = buildUrl +"))

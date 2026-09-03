@@ -87,6 +87,7 @@ public class ReplayEntry : MonoBehaviour
             {
                 Debug.LogError("[ReplayEntry] 远程回放加载失败：?replay=" + remoteUrl
                     + "。请确认该地址可访问（HTTP 200、非空）；跨源时服务器需带 Access-Control-Allow-Origin 头。");
+                NotifyWebGLError("?replay= 回放取不到：" + remoteUrl);
                 yield break;
             }
         }
@@ -158,11 +159,13 @@ public class ReplayEntry : MonoBehaviour
 
         if (text == null)
         {
+            NotifyWebGLError("找不到 replay 文件。请检查部署的 StreamingAssets/replay.txt 或 ?replay= 地址。");
             Debug.LogError("[ReplayEntry] 找不到 replay 文件。请把 replay.jsonl 放到 " + Application.persistentDataPath
                 + "，或确保 StreamingAssets/replay.txt 存在");
             yield break;
         }
 
+        NotifyWebGLStatus("正在解析回放数据…");
         ReplayData data;
         try
         {
@@ -170,12 +173,14 @@ public class ReplayEntry : MonoBehaviour
         }
         catch (System.Exception e)
         {
+            NotifyWebGLError("replay 解析失败：" + e.Message);
             Debug.LogError("[ReplayEntry] 解析失败: " + e.Message);
             yield break;
         }
 
         try
         {
+            NotifyWebGLStatus("正在构建 3D 场景…");
             // ---- 相机（场景已有 MainCamera 则复用） ----
             Camera cam = Camera.main;
             GameObject camGo;
@@ -249,9 +254,11 @@ public class ReplayEntry : MonoBehaviour
             player.SetPlaying(true);
             Debug.Log("[ReplayEntry] 已加载 " + srcName + "：" + data.rounds.Count + " 回合 · "
                 + data.start.map.width + "×" + data.start.map.height + " 地图");
+            NotifyWebGLReady();   // 地图/角色/UI 全部就绪 → 通知前端淡出加载遮罩
         }
         catch (System.Exception e)
         {
+            NotifyWebGLError("初始化失败：" + e.Message);
             Debug.LogException(e);
         }
     }
@@ -335,6 +342,38 @@ public class ReplayEntry : MonoBehaviour
                     + " error=" + req.error + " code=" + req.responseCode);
             }
         }
+    }
+
+    // === [新增] WebGL 加载遮罩通信（对应构建脚本在 index.html 里注入的
+    //     __wrGameReady / __wrStatus / __wrLoadError）===
+    // 遮罩会一直盖住画面，直到地图/角色建好调用 NotifyWebGLReady 才淡出，
+    // 避免露出 Unity 启动图标和空场景。非 WebGL 平台这些方法为空操作。
+
+    /// <summary>地图/角色全部构建完成，通知前端淡出加载遮罩。</summary>
+    static void NotifyWebGLReady()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try { Application.ExternalCall("__wrGameReady"); }
+        catch (System.Exception e) { Debug.LogWarning("[ReplayEntry] NotifyWebGLReady: " + e.Message); }
+#endif
+    }
+
+    /// <summary>更新遮罩上的阶段文字（如"正在解析回放… / 正在构建 3D 场景…"）。</summary>
+    static void NotifyWebGLStatus(string text)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try { Application.ExternalCall("__wrStatus", text); }
+        catch (System.Exception e) { Debug.LogWarning("[ReplayEntry] NotifyWebGLStatus: " + e.Message); }
+#endif
+    }
+
+    /// <summary>加载失败时把错误显示到遮罩上（不再永久遮挡 / 黑屏）。</summary>
+    static void NotifyWebGLError(string message)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try { Application.ExternalCall("__wrLoadError", message); }
+        catch (System.Exception e) { Debug.LogWarning("[ReplayEntry] NotifyWebGLError: " + e.Message); }
+#endif
     }
 
     /// <summary>
