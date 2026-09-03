@@ -43,6 +43,7 @@ public class PlaybackControlPanelController : MonoBehaviour
     public static bool ShowUnitStats = false;
     [SerializeField] Button _showStatsBtn;   // 「显示」调试切换按钮（prefab ControlBar 内，WireCallbacks 按名接线）
     [SerializeField] Button _volumeBtn;      // 「音量」循环按钮（prefab 无则动态克隆 CamFree 同款，WireCallbacks 接线）
+    [SerializeField] Button _cinematicBtn;   // 「动画」开关按钮（克隆音量按钮，默认关 = 不播全屏 ufo/plane）
 
     static Font Fn()
     {
@@ -139,6 +140,27 @@ public class PlaybackControlPanelController : MonoBehaviour
                 var barRT = btnBar.GetComponent<RectTransform>();
                 if (barRT != null && barRT.sizeDelta.x < 740f)
                     barRT.sizeDelta = new Vector2(740f, barRT.sizeDelta.y);
+            }
+
+            // 「动画」开关：克隆音量按钮放到它旁边（音量右侧）。默认关 → 全屏剧情（ufo/plane）一律不播；
+            // 选手点开后再下一次自然入夜/任务点1领取才进动画。状态由 Update 每帧高亮（开=琥珀，关=暗底）。
+            if (_volumeBtn != null)
+            {
+                var cinGo = btnBar.Find("Btn_Cinematic")?.gameObject;
+                if (cinGo == null) cinGo = Instantiate(_volumeBtn.gameObject, btnBar);
+                cinGo.name = "Btn_Cinematic";
+                var cinBtn = cinGo.GetComponent<Button>();
+                if (cinBtn != null)
+                {
+                    _cinematicBtn = cinBtn;
+                    cinBtn.onClick.AddListener(() => ReplayCinematic.CinematicEnabled = !ReplayCinematic.CinematicEnabled);
+                    // 克隆发生在 UiFonts.Apply 之后，需手动补字体 + 标签文字
+                    var cinText = cinGo.transform.Find("L")?.GetComponent<Text>();
+                    if (cinText != null) { cinText.font = Fn(); cinText.text = "动画"; }
+                }
+                var cinBar = btnBar.GetComponent<RectTransform>();
+                if (cinBar != null && cinBar.sizeDelta.x < 800f)
+                    cinBar.sizeDelta = new Vector2(800f, cinBar.sizeDelta.y);
             }
 
         }
@@ -277,6 +299,13 @@ public class PlaybackControlPanelController : MonoBehaviour
 
         // 音量按钮文字每帧同步为当前档位
         if (_volumeBtn != null) RefreshVolumeLabel();
+
+        // 「动画」开关高亮：开=琥珀色，关=暗底（默认关）
+        if (_cinematicBtn != null)
+        {
+            var img = _cinematicBtn.GetComponent<Image>();
+            if (img != null) img.color = ReplayCinematic.CinematicEnabled ? new Color(0.85f, 0.6f, 0.1f) : new Color(0.22f, 0.22f, 0.28f);
+        }
     }
 
     /// <summary>高亮当前激活的镜头模式按钮：选中=蓝（与倍速按钮一致），其余恢复暗底。</summary>

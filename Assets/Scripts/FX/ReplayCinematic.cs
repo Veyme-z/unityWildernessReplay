@@ -16,8 +16,9 @@ using UnityEngine.Video;
 ///   1. SetPlaying(false) 暂停回放  2. 全屏黑底 + 视频（Canvas sortingOrder 1000 > 全部面板 200~500）
 ///   3. 播完自动 SetPlaying(true) 恢复；锁存 handledRound，恢复后同回合不重复打断，跨回合即松开。
 ///
-/// WebGL：URL 走 TaskCardBadge.VideoUrl()（相对正斜杠）；audioOutputMode 在 WebGL 强制 None（autoplay 放行），
-/// 编辑器/PC 用 Direct 出声；RenderTexture + RawImage 渲染；isPrepared 轮询兜底。Start 预热两类视频。
+/// WebGL：URL 走 TaskCardBadge.VideoUrl()（相对正斜杠）；全平台 Direct 出声（动画默认关、需先点开「动画」
+/// 按钮=一次用户手势，浏览器才允许带声自动播放）；RenderTexture + RawImage 渲染；isPrepared 轮询兜底。
+/// Start 预热两类视频；播完过的播放器下次 Stop+重新 Prepare 避免 WebGL 片尾旧帧误判（一闪而过）。
 /// 硬约束：不改 ReplayParser / ReplayState / 伤害计算；UI 全部运行时生成，不动 .prefab/.unity/.meta。
 /// </summary>
 public class ReplayCinematic : MonoBehaviour
@@ -53,7 +54,12 @@ public class ReplayCinematic : MonoBehaviour
     bool _uiBuilt;
 
     int _handledRound = -1;      // 已触发过的回合：恢复后同回合不重复打断，跨回合即松开
+    int _lastPlayCur = -1;       // 播放中上一次见到的 cur：单帧连跳跨过整个触发回合（5× 倍速/卡帧）时用它扫区间补播
     bool _active;                // 全屏播放中（回放已暂停，本帧不再检测新触发）
+
+    /// <summary>底部「动画」开关（PlaybackControlPanelController 接线）：默认关 = 不播任何全屏（ufo/plane）；
+    /// 选手打开后，下一次自然入夜/任务点1领取才进全屏。关着播到一半被关 → 立即收尾恢复。</summary>
+    public static bool CinematicEnabled = false;
 
     // ═══════════ 生命周期 ═══════════
     void Start()
@@ -73,6 +79,13 @@ public class ReplayCinematic : MonoBehaviour
         }
         if (_player.data == null || _player.data.rounds == null) return;
 
+        // 动画开关：默认关 → 所有全屏一律跳过；若播放中被关 → 立即收尾恢复（_lastPlayCur 复位，避免重开后误扫旧区间）
+        if (!CinematicEnabled)
+        {
+            if (_active) FinishRoutine();
+            _lastPlayCur = -1;
+            return;
+        }
         if (_active) return;               // 播放中：等协程收尾，不做新检测
 
         int cur = _player.cur;
@@ -81,17 +94,44 @@ public class ReplayCinematic : MonoBehaviour
         // 锁存：已离开上次触发的回合 → 松开，允许下次再触发
         if (_handledRound >= 0 && cur != _handledRound) _handledRound = -1;
         // 恢复播放后仍停在触发回合：等待它自然推进（避免刚恢复又立刻重复打断）
-        if (_handledRound == cur) return;
+        if (_handledRound == cur) { _lastPlayCur = cur; return; }
 
         // 仅自然播放中跨入（拖动/跳转 paused 时 cur 变化但不触发）
-        if (!_player.playing) return;
+        if (!_player.playing) { _lastPlayCur = -1; return; }
 
+        // ① 当前回合本身就是触发回合（正常逐帧跨入）
         string file = ResolveVideo(cur);
         if (file != null)
         {
-            _handledRound = cur;
-            StartCoroutine(PlayRoutine(file));
+            Fire(cur, file);
+            return;
         }
+
+        // ② 跨回合漏检兜底：倍速/卡帧时 ReplayPlayer 可能在同一帧从 _lastPlayCur 连跳多回合，
+        //    直接把 R81/211… 这些「触发回合」整回合跨过 → 本帧根本看不到它。
+        //    扫描刚跳过的区间 [_lastPlayCur+1, cur)，只要跨过任何未触发的剧情回合就补播
+        //    （不回溯回放，就在当前暂停播；对入夜这种"进入夜间"语义几回合偏差无感知）。
+        if (_lastPlayCur >= 0 && cur > _lastPlayCur + 1)
+        {
+            for (int r = _lastPlayCur + 1; r < cur; r++)
+            {
+                string m = ResolveVideo(r);
+                if (m != null)
+                {
+                    Fire(r, m);
+                    return;
+                }
+            }
+        }
+        _lastPlayCur = cur;
+    }
+
+    /// <summary>触发一次全屏：锁存触发回合 + 记录播放位置，开播。</summary>
+    void Fire(int triggerRound, string file)
+    {
+        _handledRound = triggerRound;
+        _lastPlayCur = _player.cur;
+        StartCoroutine(PlayRoutine(file));
     }
 
     void OnDestroy()
@@ -177,8 +217,18 @@ public class ReplayCinematic : MonoBehaviour
         _uiRoot.SetActive(true);
         if (_videoImage != null) _videoImage.gameObject.SetActive(false);
 
-        // 3. 确保该视频 slot 已配置；未就绪则等待 Prepare（超时/失败都放行恢复，绝不软锁暂停）
+        // 3. 确保该视频 slot 已配置；未就绪则等待 Prepare（超时/失败都放行恢复，绝不软锁暂停）。
+        //    WebGL 关键：上一段播完停在片尾的 <video>，直接 seek0+Play() 在某些浏览器不生效，
+        //    会带着"片尾旧帧"被结束检测误判 → 闪一下就关。凡"播完停在片尾"就 Stop+重新 Prepare
+        //    （浏览器有缓存、很快），保证下一次绝对干净地从片头开始播。
         Slot slot = EnsureSlot(file);
+        bool endedPrev = slot.prepared && slot.vp.length > 0.5 && !slot.vp.isPlaying
+                         && slot.vp.time >= slot.vp.length - 0.2;
+        if (endedPrev)
+        {
+            slot.vp.Stop();
+            slot.prepared = false;
+        }
         if (slot.failed)
         {
             slot.failed = false;   // 上次失败（如 WebGL 偶发）→ 本次重试一次
@@ -211,15 +261,23 @@ public class ReplayCinematic : MonoBehaviour
         slot.vp.Play();
         Debug.Log("[ReplayCinematic] 全屏播放 " + file + "（回合 " + _handledRound + "）");
 
-        // 5. 等待播完：loopPointReached / 时间兜底 / 失败 / 超时 任一即收尾
+        // 5. 等待播完（WebGL 安全判定）：必须「确认已从片头真正开播」才允许判结束——Play() 后可能短暂仍停在
+        //    片尾旧帧/正在缓冲，若立刻按 time≥len 或 isPlaying==false 判完，就会"闪一下"结束。判定主依据
+        //    loopPointReached（_done）；另留两个冗余：真正开播后停止 / 真正开播后到片尾。
         double len = slot.vp.length;
-        float waitable = (float)(len > 0.5 ? len : 6.0) + DONE_GRACE;
+        float waitable = Mathf.Max((float)(len > 0.5 ? len : 6.0), 6f) + DONE_GRACE;
         float t0 = Time.realtimeSinceStartup;
+        bool started = false;      // 已确认真的在播（time 明显小于片尾 → 说明已从片头开始）
+        bool restarted = false;    // 开播卡住（缓冲/陈旧片尾未归零）→ seek0 + Play 兜底一次
         while (_active && !_done && !slot.failed)
         {
-            if (!slot.vp.isPlaying && slot.vp.isPrepared && slot.vp.frame >= 1) _done = true;  // 播完自动停下
-            else if (slot.vp.isPlaying && len > 0.5 && slot.vp.time >= len - 0.03) _done = true; // 个别平台 loopPointReached 不触发
-            if (Time.realtimeSinceStartup - t0 > waitable) _done = true;                         // 保险丝：无论如何不无限暂停
+            VideoPlayer vp = slot.vp;
+            float el = Time.realtimeSinceStartup - t0;
+            if (vp.isPlaying && len > 0.5 && vp.time < len - 0.3) started = true;          // 确认真开播
+            if (started && !vp.isPlaying && vp.isPrepared && vp.frame >= 1) { _done = true; break; }   // 自然播完
+            else if (started && len > 0.5 && vp.isPlaying && vp.time >= len - 0.05) { _done = true; break; } // 兜底到片尾
+            else if (!started && !restarted && el > 1.2f) { restarted = true; vp.time = 0; vp.Play(); }    // 卡住：seek 重启
+            if (el > waitable) { _done = true; break; }   // 保险丝：无论如何不无限暂停
             yield return null;
         }
 
@@ -252,11 +310,9 @@ public class ReplayCinematic : MonoBehaviour
         vp.playOnAwake = false;
         vp.skipOnDrop = true;                    // WebGL 低帧率跳帧保持实时
         vp.renderMode = VideoRenderMode.RenderTexture;
-#if UNITY_WEBGL && !UNITY_EDITOR
-        vp.audioOutputMode = VideoAudioOutputMode.None;   // WebGL：静音保证浏览器 autoplay 放行（同 working.mp4）
-#else
-        vp.audioOutputMode = VideoAudioOutputMode.Direct; // 编辑器/PC：正常出声
-#endif
+        // 出声（Editor/PC/WebGL 都 Direct）：动画默认关 → 必须先点开「动画」按钮（=一次用户手势），
+        // 浏览器才允许带声自动播放（Chrome sticky activation）。若个别浏览器仍拦截（无声/首帧卡），改回 None 静音保底。
+        vp.audioOutputMode = VideoAudioOutputMode.Direct;
         vp.prepareCompleted += v => OnPrepared(FindSlot(v));
         vp.errorReceived += (v, msg) => OnVideoError(FindSlot(v), msg);
         vp.loopPointReached += v => OnVideoEnd(FindSlot(v));

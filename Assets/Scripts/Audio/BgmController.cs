@@ -20,8 +20,8 @@ public class BgmController : MonoBehaviour
 
     public enum VolumeLevel { Mute = 0, Low = 1, High = 2 }
 
-    /// <summary>当前音量档（默认高），UI 每帧读标签展示。</summary>
-    public static VolumeLevel CurrentVolume { get; private set; } = VolumeLevel.High;
+    /// <summary>当前音量档（默认静音，选手点「音量」按钮逐档恢复），UI 每帧读标签展示。</summary>
+    public static VolumeLevel CurrentVolume { get; private set; } = VolumeLevel.Mute;
 
     static BgmController _instance;
 
