@@ -132,8 +132,17 @@ public static class SceneBuilder
                     AddWaterTile(root, "water_" + x + "_" + y, c);
                 else if (t == 8 || t == 9 || t == 10)
                     BuildNeutralNpc(root, t, x, y, c);
-                else if (t == 40 || t == 41 || t == 42 || t == 43)
-                    BuildMissionPoint(root, t, x, y, c, vendorPos);
+                else if (t == 40 || t == 42)
+                    BuildChestPoint(root, t, x, y, c);                 // 任务点1 宝箱（自进化类1）
+                else if (t == 41 || t == 43)
+                {
+                    // 任务点2 装甲车（自进化类2）：卡车在 replay 里是 1×2 两个相邻格。
+                    // 若当前格是某辆车的第二格（左/上邻居同为卡车）→ 已由先扫到的格子建成，跳过，避免一辆车放两辆
+                    bool isSecondCell = (x > 0 && map.data[y * w + (x - 1)] == t)
+                                     || (y > 0 && map.data[(y - 1) * w + x] == t);
+                    if (!isSecondCell)
+                        BuildVehiclePoint(root, t, x, y, c, vendorPos, map, w, h);
+                }
                 else if (t == 4 || t == 3 || t == 5 || t == 1)
                     AddStandardCube(root, "found_" + x + "_" + y, c, new Vector3(1.02f, 0.1f, 1.02f),
                             t == 1 ? new Color(0.42f, 0.42f, 0.45f) : new Color(0.35f, 0.33f, 0.40f));
@@ -455,42 +464,101 @@ public static class SceneBuilder
     // 位置即 Build 循环的格子中心 c（y=0.01 贴地）。装甲车原生约 2.7×5.3m，VEHICLE_SCALE=0.27 → 约 0.74×1.44m（0.18×1.5）。
     const float VEHICLE_SCALE = 0.27f;
 
-    static void BuildMissionPoint(Transform root, int t, int x, int y, Vector3 c, Vector3 vendorPos)
+    /// <summary>任务点1（宝箱，自进化类1）：空闲显示黄旗（flag_yellow），仅当该格有队「领取任务」
+    /// （进行中的自进化类1任务 pos 指向本格）后才换成宝箱 GoldChest。旗/宝箱为根节点下两个子物体，
+    /// 由 ChestClaimPoint 按回合数据切换。</summary>
+    static void BuildChestPoint(Transform root, int t, int x, int y, Vector3 c)
     {
-        string path = null;
-        float scale = 1f;
-        if (t == 40 || t == 42) path = "Prefabs/GoldChest";                 // 宝箱
-        else if (t == 41 || t == 43) { path = "Prefabs/broken_K151ArmoredVehicle"; scale = VEHICLE_SCALE; } // 装甲车（初始/重生是破损形态）
-        if (path == null) return;
+        var gateGo = new GameObject("Mission_" + t + "_" + x + "_" + y);
+        gateGo.transform.SetParent(root, false);
+        gateGo.transform.position = c;                 // c 已含 0.01f 贴地
 
+        var mp = gateGo.AddComponent<MissionPoint>();
+        mp.gameX = Mathf.RoundToInt(c.x + 20f);
+        mp.gameY = Mathf.RoundToInt(c.z + 15.5f);
+        mp.isVehicle = false;
+        mp.isBroken = false;
+
+        var gate = gateGo.AddComponent<ChestClaimPoint>();
+        gate.gameX = mp.gameX;
+        gate.gameY = mp.gameY;
+
+        var flagPrefab = Resources.Load<GameObject>("Prefabs/FlagYellow");
+        if (flagPrefab == null)
+            Debug.LogWarning("[SceneBuilder] 缺少任务点旗子 prefab: Prefabs/FlagYellow");
+        else
+        {
+            var flagGo = Object.Instantiate(flagPrefab, gateGo.transform);
+            flagGo.name = "Flag";
+            flagGo.transform.localPosition = Vector3.zero;
+            gate.flagGo = flagGo;
+        }
+
+        var chestPrefab = Resources.Load<GameObject>("Prefabs/GoldChest");
+        if (chestPrefab == null)
+        {
+            Debug.LogWarning("[SceneBuilder] 缺少任务点宝箱 prefab: Prefabs/GoldChest");
+            return;
+        }
+        var chestGo = Object.Instantiate(chestPrefab, gateGo.transform);
+        chestGo.name = "Chest";
+        chestGo.transform.localPosition = Vector3.zero;
+        chestGo.SetActive(false);                      // 空闲不显示，领取后才亮
+        gate.chestGo = chestGo;
+
+        gate.ApplyInitial();
+    }
+
+    /// <summary>
+    /// 任务点2（装甲车，自进化类2）：卡车在 replay 里占地 1×2 两个相邻格（tile 41/43 成对出现），
+    /// 只建一辆车、跨两格摆放：车放在两格中点。MissionPoint 同时记录两格 game 坐标（gameX2/gameY2），
+    /// 任务完成 → MissionVehicleDriver 按其中任一格都能定位到它，修复成完好车开向小贩 → 重生破损车。
+    /// </summary>
+    static void BuildVehiclePoint(Transform root, int t, int x, int y, Vector3 c, Vector3 vendorPos,
+        ReplayMap map, int w, int h)
+    {
+        const string path = "Prefabs/broken_K151ArmoredVehicle";   // 装甲车（初始/重生是破损形态）
         var prefab = Resources.Load<GameObject>(path);
         if (prefab == null) { Debug.LogWarning("[SceneBuilder] 缺少任务点 prefab: " + path); return; }
 
+        // game 坐标（c 是当前格中心；逆 CellToWorld ox=20、oz=15.5）
+        int gx = Mathf.RoundToInt(c.x + 20f);
+        int gy = Mathf.RoundToInt(c.z + 15.5f);
+
+        // 找同类型相邻格组成 1×2 占地（先检查横向 +x、再纵向 +y，调用方已保证本格是一辆车的首格）
+        Vector3 pos = c;                 // 默认单格摆放（兼容旧数据只有一格）
+        int gx2 = -1, gy2 = -1;
+        if (x + 1 < w && map.data[y * w + x + 1] == t)        // 横向占两格
+        {
+            pos = new Vector3(c.x + 0.5f, c.y, c.z);
+            gx2 = gx + 1; gy2 = gy;
+        }
+        else if (y + 1 < h && map.data[(y + 1) * w + x] == t) // 纵向占两格
+        {
+            pos = new Vector3(c.x, c.y, c.z - 0.5f);
+            gx2 = gx; gy2 = gy - 1;
+        }
+
         var go = Object.Instantiate(prefab, root);
         go.name = "Mission_" + t + "_" + x + "_" + y;
-        go.transform.position = c;                 // c 已含 0.01f 贴地
+        go.transform.position = pos;                 // 车跨两格放中点
         go.transform.rotation = Quaternion.identity;
-        if (scale != 1f) go.transform.localScale = new Vector3(scale, scale, scale);
+        go.transform.localScale = new Vector3(VEHICLE_SCALE, VEHICLE_SCALE, VEHICLE_SCALE);
 
-        // 记录 game 坐标（逆 CellToWorld：c=(gameX-ox,·,oz-gameY)，ox=(w-1)/2=20，oz=(h-1)/2=15.5），
-        // 供 MissionVehicleDriver 按任务 pos 定位；装甲车任务完成 → 修复成完好车开向小贩 → 重生破损车
-        bool isVeh = (t == 41 || t == 43);
+        // 记录 game 坐标（含第二格），供 MissionVehicleDriver 按任务 pos（命中任一格）定位
         var mp = go.AddComponent<MissionPoint>();
-        mp.gameX = Mathf.RoundToInt(c.x + 20f);
-        mp.gameY = Mathf.RoundToInt(c.z + 15.5f);
-        mp.isVehicle = isVeh;
-        mp.isBroken = isVeh;   // 装甲车初始是破损形态
+        mp.gameX = gx; mp.gameY = gy;
+        mp.gameX2 = gx2; mp.gameY2 = gy2;
+        mp.isVehicle = true;
+        mp.isBroken = true;    // 装甲车初始是破损形态
         mp.prefabPath = path;                                  // 破损车（初始+重生）
-        mp.workingPrefabPath = isVeh ? "Prefabs/K151ArmoredVehicle" : "";  // 修复后的完好车
+        mp.workingPrefabPath = "Prefabs/K151ArmoredVehicle";   // 修复后的完好车
 
-        // 装甲车车头朝向小贩（水平方向，忽略 Y）；宝箱保持 +Z(北)
-        if (t == 41 || t == 43)
-        {
-            Vector3 dir = vendorPos - c;
-            dir.y = 0f;
-            if (dir.sqrMagnitude > 0.0001f)
-                go.transform.rotation = Quaternion.LookRotation(dir.normalized);
-        }
+        // 装甲车车头朝向小贩（水平方向，忽略 Y）
+        Vector3 dir = vendorPos - pos;
+        dir.y = 0f;
+        if (dir.sqrMagnitude > 0.0001f)
+            go.transform.rotation = Quaternion.LookRotation(dir.normalized);
     }
 
     static void AddStandardCube(Transform parent, string name, Vector3 pos, Vector3 scale, Color color)

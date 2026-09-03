@@ -74,7 +74,7 @@ public class UnitDebugOverlay : MonoBehaviour
         go.transform.SetParent(transform, false);
         _textGo = go.transform;
         _textMesh = go.AddComponent<TextMesh>();
-        var font = UiFonts.Get();
+        var font = UiFonts.GetWorld();
         _textMesh.font = font;
         _textMesh.fontSize = FONT_SIZE;
         _textMesh.characterSize = CHAR_SIZE;

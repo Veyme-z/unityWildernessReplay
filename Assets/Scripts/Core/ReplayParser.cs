@@ -252,7 +252,7 @@ public static class ReplayParser
                     taskAnswer = MiniJson.Str(cd, "taskAnswer") ?? "",
                     targetName = MiniJson.Str(cd, "targetName") ?? ""
                 };
-                // targetPos 两种格式：新格式 attack 为坐标数组 [{x,y},...]（加特林 N 落点，电磁狙击炮/火箭 1 落点）；旧格式为单对象
+                // targetPos 两种格式：新格式 attack 为坐标数组 [{x,y},...]（加特林/升级后的火箭 N 落点，电磁狙击炮恒 1 落点）；旧格式为单对象
                 var tpArr = MiniJson.Arr(cd, "targetPos");
                 if (tpArr != null && tpArr.Count > 0)
                 {

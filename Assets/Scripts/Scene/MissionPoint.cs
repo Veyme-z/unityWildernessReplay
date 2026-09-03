@@ -2,7 +2,7 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 任务点组件：挂在 SceneBuilder.BuildMissionPoint 生成的任务点（宝箱/装甲车）根节点上。
+/// 任务点组件：挂在 SceneBuilder.BuildChestPoint / BuildVehiclePoint 生成的任务点（宝箱/装甲车）根节点上。
 /// 记录格子坐标与类型，供 MissionVehicleDriver 按 game 坐标定位。
 /// 装甲车（isVehicle）任务点初始/重生形态是「破损卡车」（broken_…prefab）；「自进化类2」任务
 /// 完成时 StartSellCycle：破损→修复成完好卡车→直线开向小贩（不调头，小贩前停下）→停留片刻
@@ -11,6 +11,7 @@ using UnityEngine;
 public class MissionPoint : MonoBehaviour
 {
     public int gameX, gameY;   // 格子坐标（game 坐标系：左下原点，x 东 y 北）
+    public int gameX2 = -1, gameY2 = -1; // 卡车 1×2 占地时另一格坐标（无则 -1）；供任务 pos 命中其中任一格
     public bool isVehicle;     // 装甲车（任务完成会修复/开走/重生）；宝箱为 false
     public bool isBroken;      // 破损卡车（任务点初始/重生形态）
     public string prefabPath;          // 破损卡车 prefab（初始+重生，如 Prefabs/broken_K151ArmoredVehicle）
@@ -42,6 +43,7 @@ public class MissionPoint : MonoBehaviour
                 var wmp = working.GetComponent<MissionPoint>();
                 if (wmp == null) wmp = working.AddComponent<MissionPoint>();
                 wmp.gameX = gameX; wmp.gameY = gameY;
+                wmp.gameX2 = gameX2; wmp.gameY2 = gameY2;
                 wmp.isVehicle = true; wmp.isBroken = false;
                 wmp.prefabPath = prefabPath; wmp.workingPrefabPath = workingPrefabPath;
                 wmp._originPos = transform.position;   // 原任务点（Seek 重置 / 重生破损车用）
@@ -105,6 +107,7 @@ public class MissionPoint : MonoBehaviour
             var mp = newBroken.GetComponent<MissionPoint>();
             if (mp == null) mp = newBroken.AddComponent<MissionPoint>();
             mp.gameX = gameX; mp.gameY = gameY;
+            mp.gameX2 = gameX2; mp.gameY2 = gameY2;
             mp.isVehicle = true; mp.isBroken = true;
             mp.prefabPath = prefabPath; mp.workingPrefabPath = workingPrefabPath;
         }
@@ -126,6 +129,7 @@ public class MissionPoint : MonoBehaviour
                 var mp = newBroken.GetComponent<MissionPoint>();
                 if (mp == null) mp = newBroken.AddComponent<MissionPoint>();
                 mp.gameX = gameX; mp.gameY = gameY;
+                mp.gameX2 = gameX2; mp.gameY2 = gameY2;
                 mp.isVehicle = true; mp.isBroken = true;
                 mp.prefabPath = prefabPath; mp.workingPrefabPath = workingPrefabPath;
             }

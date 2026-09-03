@@ -10,7 +10,7 @@ public partial class TowerVisualController : MonoBehaviour
 
     /// <summary>
     /// 触发一次攻击表现（多目标）：转向主目标 + 后坐力 + 枪口特效 + 按塔类型分派特效。
-    /// 30 加特林(Minigun)=原生粒子 + N 条弹道 + 落点火花；31 电磁狙击炮(Laser)=多束激光延伸；32 火箭(Rocket)=导弹直飞。
+    /// 30 加特林(Minigun)=原生粒子 + N 条弹道 + 落点火花；31 电磁狙击炮(Laser)=多束激光延伸（单点）；32 火箭(Rocket)=按落点数 N 枚导弹直飞、各自爆炸。
     /// </summary>
     public void Fire(Vector3[] targetWorldPositions)
     {
@@ -23,7 +23,7 @@ public partial class TowerVisualController : MonoBehaviour
 
         // SciFi 塔原生特效（替代旧程序化 Tracer/命中环/电击）
         if (_towerType == "Laser") { ShowLaserBeam(primary); return; }
-        if (_towerType == "Rocket") { LaunchRockets(primary); return; }
+        if (_towerType == "Rocket") { LaunchRockets(targetWorldPositions); return; }   // 按落点数齐射（升级后一次打多个目标）
         if (_towerType == "AntiAir") return;  // 仅原生枪口粒子
         if (_towerType == "Minigun")
         {

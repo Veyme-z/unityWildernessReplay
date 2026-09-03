@@ -54,7 +54,7 @@ public partial class TowerVisualController : MonoBehaviour
     public float hitRingDuration = 0.40f;
 
     [Header("SciFi 塔原生特效（按塔类型配置）")]
-    [Tooltip("火箭塔：发射口节点数组（Rocket1_LOC/Rocket2_LOC）；激光光束由 Setup 自动按 LaserBeam* 前缀收集（Laser_2/3 多束）")]
+    [Tooltip("火箭塔：发射口节点数组（可只配部分/留空；Setup 会自动按 Rocket*_LOC 扫描补齐，2/3 级模型分别有 4/6 个发射口）")]
     public Transform[] rocketLaunchers;
 
     // 枪口无独立节点时，用炮塔前向延伸的距离（世界单位）

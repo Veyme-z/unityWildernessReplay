@@ -77,7 +77,7 @@ public partial class UnitView
         _towerVisual.Fire(targetWorldPos);
     }
 
-    /// <summary>触发武器工事多目标攻击表现（加特林 N 落点），落点为世界坐标数组。</summary>
+    /// <summary>触发武器工事多目标攻击表现（加特林/火箭 N 落点齐射），落点为世界坐标数组。</summary>
     public void TriggerTowerAttackMulti(Vector3[] targetWorldPositions)
     {
         if (_towerVisual != null && _towerVisual.IsSetup)

@@ -161,7 +161,7 @@ public class TaskCardBadge : MonoBehaviour
         txt.transform.SetParent(transform, false);
         txt.transform.localPosition = new Vector3(0f, 0f, -0.01f * CARD_SCALE); // 略前一点避免与底板 z-fighting
         _tm = txt.AddComponent<TextMesh>();
-        _tm.font = UiFonts.Get();
+        _tm.font = UiFonts.GetWorld();
         _tm.fontSize = 40;
         _tm.characterSize = 0.03f * CARD_SCALE;
         _tm.anchor = TextAnchor.MiddleCenter;

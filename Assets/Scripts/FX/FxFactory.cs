@@ -37,7 +37,8 @@ public static class FxFactory
 
     public static Font BuiltinFont()
     {
-        return UiFonts.Get();
+        // 世界空间文字（TextMesh）用世界字体，与 2D UI（UiFonts.Get）分开图集
+        return UiFonts.GetWorld();
     }
 
     /// <summary>伤害数字：上浮 + 淡出</summary>
@@ -53,6 +54,14 @@ public static class FxFactory
         tm.anchor = TextAnchor.MiddleCenter;
         tm.alignment = TextAlignment.Center;
         tm.color = color;
+        // 动态字体材质要挂 live font.material：TextMesh 自动给的材质是赋值瞬间的“贴图快照”，
+        // 之后新加的字形不会进去 → 白块/残缺（TradeBadge 同款）。请求字形 + 同步材质。
+        if (tm.font != null)
+        {
+            tm.font.RequestCharactersInTexture(tm.text, tm.fontSize, tm.fontStyle);
+            var dmr = tm.GetComponent<MeshRenderer>();
+            if (dmr != null && tm.font.material != null) dmr.sharedMaterial = tm.font.material;
+        }
         go.AddComponent<Billboard>();  // 面朝相机，俯视可见
         var f = go.AddComponent<FloatFade>();
         f.duration = 1.2f;
@@ -117,8 +126,15 @@ public static class FxFactory
         tm.anchor = TextAnchor.MiddleCenter;
         tm.alignment = TextAlignment.Center;
         tm.color = Color.white;
-        // WebGL: legacy TextMesh 不会主动为动态字体请求 CJK 字形，显式请求
-        tm.font.RequestCharactersInTexture(text, tm.fontSize, tm.fontStyle);
+        // WebGL: legacy TextMesh 不会主动为动态字体请求 CJK 字形，显式请求；
+        // 且 renderer 材质必须挂 live font.material（自动材质是赋值瞬间的贴图快照，
+        // 动态字体后续新增字形不会进去 → 白块/残缺）。与 DamageText/TradeBadge 一致。
+        if (tm.font != null)
+        {
+            tm.font.RequestCharactersInTexture(text, tm.fontSize, tm.fontStyle);
+            var bmr = tm.GetComponent<MeshRenderer>();
+            if (bmr != null && tm.font.material != null) bmr.sharedMaterial = tm.font.material;
+        }
         txt.AddComponent<Billboard>();
 
         var f = go.AddComponent<FadeScale>();

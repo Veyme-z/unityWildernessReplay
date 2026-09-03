@@ -52,26 +52,41 @@
 
 ### 2.3 构建 WebGL 网页版
 
-1. **File → Build Settings** → 选 **WebGL** → 点 **Switch Platform**（首次切换需要等一会儿）
-2. 点 **Build**，选择输出目录，等待构建完成（首次构建可能需要 5-10 分钟）
-3. 构建产物是一个文件夹，结构如下：
+**推荐用一键构建脚本**（自动配好 WebGL 关键设置 + 页面样式补丁，详见 [WebGL构建脚本说明.md](WebGL构建脚本说明.md)）：
+
+1. 菜单 **Tools → WildernessReplay → Build WebGL**
+   - 首次若当前还不是 WebGL 平台，脚本会先切换平台 → 编辑器重载 → 弹窗提示重载后**再点一次**同一菜单
+2. 构建输出到 `Builds/WildernessReplay_WebGL_<日期>/`（同一天重复构建会清空重写），Console 打印结果与包大小
+3. 也可以点 **Tools → WildernessReplay → 仅应用 WebGL 构建设置** 固化设置后，再用原生 **File → Build Settings** 手动构建
+
+构建产物是一个文件夹，结构如下：
 
 ```
-你选的输出目录/
-├── index.html          ← 入口页面，浏览器访问这个
+Builds/WildernessReplay_WebGL_<日期>/
+├── index.html          ← 入口页面（构建时已补丁：全窗画布 + 加载进度条样式）
 ├── Build/
-│   ├── BuildName.data.unityweb    ← 游戏资源数据（replay、Prefab、音频等打包在此）
-│   ├── BuildName.framework.unityweb  ← Unity 引擎运行时
-│   ├── BuildName.loader.js        ← 加载脚本
-│   └── BuildName.wasm.unityweb    ← WebAssembly 代码
-├── TemplateData/       ← 页面样式资源（图标、CSS 等）
-└── favicon.ico
+│   ├── xxx.data.unityweb    ← 游戏资源数据（贴图/模型/音频，最大；注意 GitHub 单文件 100MB 上限）
+│   ├── xxx.framework.js.unityweb ← Unity 引擎运行时
+│   ├── xxx.loader.js        ← 加载脚本
+│   └── xxx.wasm.unityweb    ← WebAssembly 代码
+├── StreamingAssets/     ← replay.txt、任务视频（WebGL 下是独立文件，不走 System.IO）
+├── TemplateData/        ← 模板样式
+└── README_使用说明.txt
 ```
 
-1. **部署方式**：用任意 HTTP 服务器托管即可。代码文件需要写明加载时应将资源数据作为压缩包加载，否则会报错
-   > ⚠️ **不能直接双击 `index.html` 打开**，浏览器会因为 CORS 策略阻止加载 `.unityweb` 文件，必须通过 HTTP 服务器访问。
+**部署与访问**：
 
-2. **替换 replay 后需要重新构建**：`StreamingAssets/replay.txt` 会被打包进 `BuildName.data.unityweb`，不支持运行时热替换。如果换了 replay 文件，最好重新 Build 并部署。
+- 用任意 HTTP 服务器托管**整个文件夹**（index.html + Build/ + StreamingAssets/ + TemplateData/ 都要有）
+  > ⚠️ **不能直接双击 `index.html` 打开**，浏览器 CORS 会阻止加载 `.unityweb`，必须通过 HTTP 服务访问。
+- 包内回放：`http://服务器/`（读 `StreamingAssets/replay.txt`）
+- 远程回放：`http://服务器/?replay=http://回放地址/replay.txt`（走 URL 参数，无需重新打包）
+- 改 replay 走远程参数时，换 replay 只需换 URL，不用每次重新 Build；否则需要重新构建部署
+
+**改页面样式**（标题 / 加载动画 / 进度条配色等）：不要手动改构建产物里的 `index.html`（下次构建会覆盖），
+去改构建脚本 `Assets/Editor/WildernessReplayWebGLBuilder.cs` 的 `PatchIndexHtml` 方法后重新构建即可。
+逐项对应关系与注意事项见 [WebGL构建脚本说明.md](WebGL构建脚本说明.md)。
+
+> 注：`Builds/` 目录已被 `.gitignore` 排除，构建产物不会提交进 git。
 
 ### 2.4 替换 replay 文件
 
@@ -328,6 +343,7 @@ replay 文件是 **JSONL 格式**（每行一个 JSON），结构如下：
 | [任务卡片实现与升级方案.md](任务卡片实现与升级方案.md) | TaskCardBadge 的实现细节 + Phase 2 升级方案 | 做任务卡片相关需求时 |
 | [夜间机器人卡顿优化_实现记录.md](夜间机器人卡顿优化_实现记录.md) | 性能优化的完整改动记录 + 参数调优指南 | 遇到性能问题 / 想调 LOD 参数时 |
 | [HUD_UI_AUDIT.md](HUD_UI_AUDIT.md) | UI 面板结构审计：Prefab 与代码的关系 | 改 UI 布局/样式/新增字段时 |
+| [WebGL构建脚本说明.md](WebGL构建脚本说明.md) | WebGL 一键构建 + 自动固化的设置 + index.html 页面样式怎么改 | 构建 WebGL / 调页面样式 / 包体积过大时 |
 | [Agent任务开发说明.md](Agent任务开发说明.md) | 游戏任务系统的设计说明（推理类/长上下文/自进化类） | 需要理解任务机制时 |
 | [任务书.md](任务书.md) | 比赛规则原文 | 需要理解游戏玩法时 |
 

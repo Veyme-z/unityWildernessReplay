@@ -129,6 +129,10 @@ public class ResourceViewManager
             tm.alignment = TextAlignment.Center;
             tm.color = Color.white;
             tm.font = FxFactory.BuiltinFont();
+            // 动态字体材质不会自动挂到 MeshRenderer → 否则字形渲染成白色豆腐块/隐形（WebGL 尤其）。
+            var lmr = tm.GetComponent<MeshRenderer>();
+            if (lmr != null && tm.font != null && tm.font.material != null)
+                lmr.sharedMaterial = tm.font.material;
             labelGo.AddComponent<Billboard>();
         }
 
@@ -151,8 +155,15 @@ public class ResourceViewManager
     void UpdateLabel(GameObject go, int num)
     {
         var tm = go.GetComponentInChildren<TextMesh>();
-        if (tm != null)
-            tm.text = num > 0 ? num.ToString() : "";
+        if (tm == null) return;
+        tm.text = num > 0 ? num.ToString() : "";
+        // WebGL: TextMesh 换字后需请求字形并同步 font.material，否则白块/隐形
+        if (tm.font != null)
+        {
+            tm.font.RequestCharactersInTexture(tm.text, tm.fontSize, tm.fontStyle);
+            var mr = tm.GetComponent<MeshRenderer>();
+            if (mr != null && tm.font.material != null) mr.sharedMaterial = tm.font.material;
+        }
     }
 
     public void Clear()

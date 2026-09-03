@@ -86,7 +86,7 @@ public class ReplayCommand
     public string queryInfo = "";
     public string taskAnswer = "";
     public string targetName = "";  // buy/sell 目标名（如 WeaponUpgradeVoucher, copper）
-    public List<ReplayPoint> targets = new List<ReplayPoint>(); // attack 多落点（加特林传 N 个；电磁狙击炮/火箭各 1 个，此时亦有 1 元素）；单点 targetPos 为空
+    public List<ReplayPoint> targets = new List<ReplayPoint>(); // attack 多落点（加特林、升级后的火箭按等级传 N 个；电磁狙击炮恒 1 个，此时亦有 1 元素）；单点 targetPos 为空
     public List<ReplayPoint> skillTargetPos = new List<ReplayPoint>(); // 范围技能目标格（AoE，如 DizzyWeapon/Bomb 的 3×3）
 }
 

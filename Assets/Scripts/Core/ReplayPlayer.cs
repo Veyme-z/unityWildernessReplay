@@ -304,12 +304,14 @@ void OnRoundEntered(int n)
                         }
                         else if (u.type == 32)
                         {
-                            // 火箭发射台：火箭飞向落点，到达后爆炸（3×3 AoE）+ 震屏由 TowerVisualController 在火箭到达时触发
-                            u.view.TriggerTowerAttack(wp);
-                            // 塔视觉未就绪（火箭无法飞行）时兜底直接爆炸
+                            // 火箭发射台：按等级/落点数齐射——每个被攻击目标一枚火箭飞向该落点，到达后各自爆炸（3×3 AoE）+ 震屏由 TowerVisualController 在火箭到达时触发
+                            var rocketTargets = AttackWorldTargets(c);
+                            u.view.TriggerTowerAttackMulti(rocketTargets);
+                            // 塔视觉未就绪（火箭无法飞行）时兜底直接在各落点爆炸
                             if (!u.view.IsTowerVisualReady)
                             {
-                                FxFactory.PlayBombEffect(wp);
+                                foreach (var p in rocketTargets)
+                                    FxFactory.PlayBombEffect(p);
                                 if (CameraManager.Instance != null)
                                     CameraManager.Instance.CameraShake(0.4f, 0.25f);
                             }

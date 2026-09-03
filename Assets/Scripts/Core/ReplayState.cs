@@ -281,21 +281,6 @@ public class StateEngine
                     }
         }
 
-        // 说话检测：talk 字段非空且与上一回合不同 → 气泡
-        if (fx && host != null)
-            foreach (var t in next.teams)
-                foreach (var r in t.roles)
-                {
-                    if (string.IsNullOrEmpty(r.talk)) continue;
-                    ReplayRole pr;
-                    bool isNew = !prevRoles.TryGetValue(r.id, out pr);
-                    if (isNew || pr.talk != r.talk)
-                    {
-                        var u = GetUnit(r.id);
-                        if (u != null) host.OnTalk(u, r.talk);
-                    }
-                }
-
         // 资源变化日志
         if (fx && host != null)
         {

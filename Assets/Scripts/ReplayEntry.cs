@@ -41,6 +41,9 @@ public class ReplayEntry : MonoBehaviour
 
         // 装甲车任务点驱动（「自进化类2」任务完成 → 卡车开到小贩前面）
         gameObject.AddComponent<MissionVehicleDriver>();
+
+        // 回放全屏剧情视频：入夜首回合→ufo.mp4、任务点1领取→plane.mp4（数据驱动，见 ReplayCinematic）
+        gameObject.AddComponent<ReplayCinematic>();
     }
 
     /// <summary>

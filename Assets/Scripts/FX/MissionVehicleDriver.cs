@@ -78,7 +78,12 @@ public class MissionVehicleDriver : MonoBehaviour
     static MissionPoint FindTruck(int gx, int gy)
     {
         foreach (var mp in FindObjectsOfType<MissionPoint>())
-            if (mp.isVehicle && mp.gameX == gx && mp.gameY == gy) return mp;
+        {
+            if (!mp.isVehicle) continue;
+            // 卡车 1×2 占两格：任务 pos 可能指向其中任一格，都命中同一辆车
+            if (mp.gameX == gx && mp.gameY == gy) return mp;
+            if (mp.gameX2 >= 0 && mp.gameX2 == gx && mp.gameY2 == gy) return mp;
+        }
         return null;
     }
 

@@ -47,7 +47,7 @@ Unity 2022.3.62f3c1 **Built-in RP** 回放播放器。加载 JSONL replay 文件
 ### UI
 `HudController.cs` `EventLogPanelController.cs` `PlaybackControlPanelController.cs` `SettlementPanelController.cs` + `UnitDebugOverlay.cs`
 
-4 个面板均由场景 `PrefabRefs` 按 GUID 引用对应 prefab 驱动（`Create()` 缺 prefab 直接 `LogError`，**纯代码兜底 `CreateFromCode` 已全部删除**）。字体运行时统一替换为 `NotoSansSC`（CJK，**无 emoji 字形** → 项目 UI 全部用纯中文文本，不用 emoji）。`UnitDebugOverlay.cs` 是单位头顶调试悬浮文字（`[ID|Pos|HP|ATK]`），由 UnitView 挂载、受 `PlaybackControlPanelController.ShowUnitStats`（底部面板「显示」按钮）全局开关控制。
+4 个面板均由场景 `PrefabRefs` 按 GUID 引用对应 prefab 驱动（`Create()` 缺 prefab 直接 `LogError`，**纯代码兜底 `CreateFromCode` 已全部删除**）。**字体（2026-09-03 拆双图集）**：2D UI（uGUI）用 `NotoSansSC-UI`（`UiFonts.Get()`），3D 世界文字（TextMesh）用原 `NotoSansSC-Regular`（`UiFonts.GetWorld()`/`FxFactory.BuiltinFont()`）——拆分防 WebGL 台式机（大屏高缩放）共享动态图集被挤爆 → UI 字空白 / TextMesh 白色豆腐块（见已知大坑）。均 CJK、**无 emoji 字形** → UI 用纯中文文本、不用 emoji。`UnitDebugOverlay.cs` 是单位头顶调试悬浮文字（`[ID|Pos|HP|ATK]`，世界字体），由 UnitView 挂载、受 `PlaybackControlPanelController.ShowUnitStats`（底部面板「显示」按钮）全局开关控制。
 
 ### 音频（BGM，2026-08-21 新增）
 | 文件 | 职责 |
@@ -362,6 +362,9 @@ Create(state, parent)
 | **`AudioSource.isPlaying` 在 `AudioListener.pause` 时恒 false** | 回放暂停（`AudioListener.pause=true`）时任何 `AudioSource.isPlaying` 都返回 false。`BgmController` 判断「要淡出的旧通道」**不能靠 `isPlaying`**（否则暂停拖时间轴 seek 时旧曲不淡出，恢复播放双曲叠加），必须按 `clip` 归属判定、结束无条件 `Stop()`。换/调 BGM 逻辑时注意 |
 | **uGUI Text 在过矮的 rect 里整行被丢弃（数字不显示）** | `Text` 默认 `verticalOverflow=Truncate`：当 rect 高度小于该字号的行高（Noto 动态字体行高≈1.4×字号，15 号约 23px）时 TextGenerator 判定无行可放 → **生成 0 字符、静默不显示**。价格图轴标签曾用 36×22 rect + 15 号 → 数字全消失（曲线 RawImage 与卡片中文正常，曾误以为字体缺字形）。修复：`PriceChartCard.MakeText` 设 `horizontal/verticalOverflow = Overflow`；标签 rect 改类常量 `LABEL_W=56/LABEL_H=30/LABEL_FONT_SIZE=15`（高度须明显大于行高）。**排查 uGUI Text 不显示先看 rect 高 vs 行高 + Overflow，别先怀疑字体文件** |
 
+| **WebGL 台式机：UI 个别字空白 / 世界文字白色豆腐块（动态字体图集挤爆）** | 共享 Noto 动态图集容量有限；台式机/大屏 Canvas 缩放大 → 字形以更大像素烧入 → 图集满：uGUI 后请求的字形加不进 → 该字空白（如价格卡“单位：天/金币”）；TextMesh 字形加不进或 `MeshRenderer` 材质未同步 `font.material` → 渲染成白色豆腐块/残字大块。笔记本缩放小、图集够 → 正常（同构建不同机器不一样）。2026-09-03 已拆 `NotoSansSC-UI`(uGUI) / `NotoSansSC-Regular`(TextMesh) 双字体（`UiFonts.Get` vs `GetWorld`）+ 矿点 Label 材质同步。**再遇此现象：先查该文字对象用的是 UI 还是世界字体、MeshRenderer 是否同步 font.material** |
+| **白色方块/残缺字 = TextMesh 动态字体材质是“赋值快照”** | Unity 给 TextMesh 赋字体时，MeshRenderer 自动拿到的是**当时 `font.material` 的贴图拷贝**；动态字形是之后不断加进 `font.material` 图集的，快照贴图不会更新 → 只要文字含“创建那一刻还没烧进图集”的字形就残缺/白块（WebGL 稳定、Editor 随机）。**修复**：运行时建 TextMesh 一律 `renderer.sharedMaterial = font.material` + `RequestCharactersInTexture`（TradeBadge 08-14 已修；2026-09-03 补齐 FxFactory.DamageText/Bubble 等全部 7 处创建点）。**另**：任务点旁“额外出现的白字/方块”其实是 replay 角色 `talk` 对话被显示成头顶气泡（如“请告诉我任务具体内容/答案是…”），该功能非需求，2026-09-03 已删除（ReplayState 说话检测），连事件日志也不再出现 |
+
 > 资源 / 材质 / 模型 / 贴图 / 动画资源类坑已全部移至 [资源问题与解决方案.md](资源问题与解决方案.md)，此处只保留**代码/逻辑**类坑。
 
 ---
@@ -372,6 +375,8 @@ Create(state, parent)
 
 | 日期 | 改动 |
 |------|------|
+| 2026-09-03 | **右侧任务面板改回固定尺寸 + 移除角色 talk→气泡**：① 自适应高度方案弃用，任务面板固定：推理类 `315×220@(-10,-5)`、长上下文 `315×285@(-10,-235)`（宽高各 +15），价格卡下移到 `(-10,-532)` 给长上下文让位——三者互不重叠（推理底 -225 → 距长上下文 10px，长上下文底 -520 → 距价格卡 12px）。② 移除 ReplayState 的“角色 talk 变化 → OnTalk 气泡”检测：replay 里 agent 对话（如“请告诉我任务具体内容/答案是…”）不再以说话气泡或事件日志显示（该功能非需求）。实测回合 10 无 talk 文本对象 |
+| 2026-09-03 | **中文字体拆成 UI / 世界两套（修复 WebGL 台式机 UI 字空白 + TextMesh 白色豆腐块）**：新增 `Assets/Resources/Fonts/NotoSansSC-UI.ttf`（复制 Noto、新 guid）；`UiFonts` 分 `Get()`（UI）与 `GetWorld()`（世界，原 Noto-Regular），uGUI 全部走 UI、世界 TextMesh（`FxFactory.BuiltinFont`/`TaskCardBadge`/`UnitDebugOverlay`/`ResourceViewManager`/`NpcNameLabel`/`TradeBadge`）走世界字体——两张动态图集互不抢占，避免台式机（大屏高缩放→字形以更大像素烧图集）图集挤爆：uGUI 后请求字形失败→字空白（价格卡“单位：天/金币”）、TextMesh 加不进字形/材质未同步→白色豆腐块。另修**矿点数量 Label 材质未同步**（`ResourceViewManager`：创建 + `UpdateLabel` 均 `renderer.sharedMaterial=font.material` + RequestCharacters）。实测：Editor 卡车任务完成回合文字正常、双字体各自加载、编译 0 error |
 | 2026-09-02 | **武器工事换用 SciFiStrategyLowPoly 防御塔 + 导入报错修复**：① 修复 `SciFiStrategyLowPoly` 导入报错——`Main.mat` 引用 **Built-in 目标** Shader Graph，装免费包 `com.unity.shadergraph` 14.0.12 + 强制重导后全包 53 个模型不再粉紫（共享一材质，无需烘焙/remap）；17 个 `Animation/*.fbx` 关动画导入消除 0 帧报错；删除无引用损坏的 `CannonShell.prefab`（详见 [资源问题与解决方案.md](资源问题与解决方案.md) 第一节）。② 武器工事模型替换：roleType 30/31/32 由 CubeTowerDefense 三塔改为 **SciFi 塔（AntiAir/Laser/Rocket）**——`TowerVisualController.ResolveTowerType` 新映射 + `TURRET_NODES`→`Horizontal`（SciFi 塔偏航枢轴）；新增 `Assets/Editor/SciFiTowerPrefabBuilder.cs` 生成 6 个包装 Prefab（`CubeTowers/Tower_{Type}_{Faction}`，visualScale≈0.52 占地 0.67m 与旧塔一致，AntiAir 枪口=`MuzzleFlash`、Laser/Rocket 用 forward fallback）；开火表现：Laser 复用粗激光+落点电击分支、Rocket 无弹道（爆炸由 ReplayPlayer）、AntiAir 多 tracer。实测 Play 模式：6 座塔正常渲染（0 粉紫像素）、炮塔 180°→目标转向正常、Resources.Load 全通、编译 0 error |
 | 2026-09-02 | **SciFi 塔迭代（比例/低饱和色/特效延伸）**：① 炮塔 `Horizontal` 节点放大 **1.5x**、底座占地加宽到 0.85m（世界 1.4m 高不变，比例更自然）；② 阵营色改 **HSV 低饱和**（红 HSV(0,0.5,0.7)≈砖红 / 蓝 HSV(0.59,0.5,0.7)≈钢蓝，去荧光）；③ 激光攻击时**延伸到落点**（LineRenderer/End 逐帧 `InverseTransformPoint` 追踪，随炮塔转向始终指向目标）；④ 火箭导弹**飞到落点坐标再爆炸**（爆炸+震屏移到塔视觉 `LaunchRockets` 到达时触发 `FxFactory.PlayBombEffect`，`ReplayPlayer` type32 不再即时爆炸、塔视觉未就绪兜底；暂停冻结）。实测 Play：激光末端精确落点、火箭到达后 CFXR 爆炸、低饱和色无荧光、0 粉紫 |
 | 2026-09-02 | **拆分 TowerVisualController.cs（905→5 partial 文件，各 < 300 行）**：照 UnitView partial 模式按职责拆——`TowerVisualController.cs`(286: 类声明/序列化配置/共享运行态/Setup 调度/通用 helper) + `.Aim.cs`(215: Fire/开火/复位 + LateUpdate 每帧调度器) + `.Laser.cs`(105: 激光多光束) + `.Rocket.cs`(109: 火箭直飞/爆炸) + `.Fx.cs`(246: 弹道线/命中环/命中火花/OnDestroy 清理)。行为零改动；Play 实测三种塔开火/激光/火箭全部正常 |
